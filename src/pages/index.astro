@@ -1,0 +1,429 @@
+---
+import MainLayout from '../layouts/MainLayout.astro';
+import { getAuthenticatedUser } from '../lib/auth.js';
+
+const user = await getAuthenticatedUser(Astro.request);
+---
+
+<MainLayout title="MsgBridge | Developer-First ChatOTP & Messaging Gateway">
+  <!-- Navigation Header -->
+  <header class="border-b border-slate-800/80 bg-[#090d16]/80 backdrop-blur sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+          <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+          </svg>
+        </div>
+        <span class="font-bold text-xl tracking-tight text-white">MsgBridge <span class="text-xs px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">SaaS Hub</span></span>
+      </div>
+
+      <nav class="hidden md:flex items-center gap-8 text-sm font-medium text-slate-300">
+        <a href="#features" class="hover:text-white transition-colors">Features</a>
+        <a href="#architecture" class="hover:text-white transition-colors">Architecture</a>
+        <a href="#code" class="hover:text-white transition-colors">API Docs</a>
+        <a href="#pricing" class="hover:text-white transition-colors">Pricing</a>
+      </nav>
+
+      <div class="flex items-center gap-3">
+        {user ? (
+          <a
+            href="/dashboard"
+            class="px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/30 transition-all"
+          >
+            Go to Console ({user.name.split(' ')[0]}) →
+          </a>
+        ) : (
+          <>
+            <a
+              href="/login"
+              class="px-4 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800/60 transition-colors"
+            >
+              Sign In
+            </a>
+            <a
+              href="/register"
+              class="px-4 py-2 rounded-xl text-xs font-semibold bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white shadow-md shadow-indigo-600/20 transition-all hover:scale-[1.02]"
+            >
+              Start Free Trial
+            </a>
+          </>
+        )}
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="relative pt-20 pb-28 overflow-hidden">
+    <!-- Background glowing orbs -->
+    <div class="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[350px] bg-gradient-to-tr from-indigo-600/20 to-violet-600/10 rounded-full blur-[140px] pointer-events-none"></div>
+    
+    <div class="max-w-7xl mx-auto px-6 relative z-10">
+      <div class="text-center max-w-3xl mx-auto mb-16">
+        <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-xs font-medium text-indigo-300 mb-6">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          Wechaty Bot Pooling Engine 2.0 Released
+        </div>
+        <h1 class="text-4xl sm:text-6xl font-extrabold tracking-tight text-white leading-[1.15]">
+          Trigger Chat OTPs & Alerts <br />
+          <span class="bg-gradient-to-r from-indigo-400 via-violet-300 to-cyan-300 bg-clip-text text-transparent">Via a Single REST API</span>
+        </h1>
+        <p class="mt-6 text-lg text-slate-400 max-w-2xl mx-auto leading-relaxed">
+          MsgBridge replaces costly SMS gateways with instant WeChat & messaging chat delivery. 
+          Manage multi-tenant bot instances, session pooling, and real-time delivery status tracking with zero ops headache.
+        </p>
+
+        <div class="mt-10 flex flex-wrap items-center justify-center gap-4">
+          <a
+            href={user ? "/dashboard" : "/register"}
+            class="px-6 py-3.5 rounded-xl font-semibold text-sm bg-gradient-to-r from-indigo-600 via-indigo-500 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white shadow-xl shadow-indigo-600/30 transition-all hover:scale-[1.02]"
+          >
+            Launch Free Sandbox Account →
+          </a>
+          <a
+            href="/dashboard/send"
+            class="px-6 py-3.5 rounded-xl font-semibold text-sm bg-slate-900 border border-slate-700/80 hover:border-slate-600 text-slate-200 hover:bg-slate-800/80 transition-colors"
+          >
+            Test Live OTP Simulator
+          </a>
+        </div>
+      </div>
+
+      <!-- Live Interactive Demo Widget & Architecture Card -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch max-w-6xl mx-auto">
+        <!-- Interactive Simulator Card -->
+        <div class="lg:col-span-6 rounded-2xl border border-slate-800 bg-[#0e1320]/80 backdrop-blur p-6 shadow-2xl flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+              <div class="flex items-center gap-2">
+                <span class="w-3 h-3 rounded-full bg-rose-500/80"></span>
+                <span class="w-3 h-3 rounded-full bg-amber-500/80"></span>
+                <span class="w-3 h-3 rounded-full bg-emerald-500/80"></span>
+                <span class="ml-2 text-xs font-mono text-slate-400">Interactive REST API Dispatcher</span>
+              </div>
+              <span class="text-[11px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">POST /api/v1/messages/send</span>
+            </div>
+
+            <div class="mt-5 space-y-4">
+              <div>
+                <label class="block text-xs font-semibold text-slate-300 mb-1">Target Recipient (Phone / WeChat ID)</label>
+                <input
+                  type="text"
+                  id="landing-recipient"
+                  value="+1 650 555 0192"
+                  class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 focus:border-indigo-500 focus:outline-none text-sm text-slate-100 font-mono"
+                />
+              </div>
+
+              <div>
+                <label class="block text-xs font-semibold text-slate-300 mb-1">Message Content / Template</label>
+                <textarea
+                  id="landing-content"
+                  rows="3"
+                  class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 focus:border-indigo-500 focus:outline-none text-sm text-slate-100 font-mono"
+                >Your MsgBridge verification code is 591823. Valid for 5 minutes. Do not share.</textarea>
+              </div>
+
+              <div class="flex items-center gap-3">
+                <button
+                  type="button"
+                  id="landing-send-btn"
+                  onclick="triggerDemoSend()"
+                  class="flex-1 py-2.5 rounded-xl font-semibold text-xs bg-indigo-600 hover:bg-indigo-500 text-white transition-all shadow-md shadow-indigo-600/20 flex items-center justify-center gap-2"
+                >
+                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                  </svg>
+                  <span>Dispatch Message Test</span>
+                </button>
+                <button
+                  type="button"
+                  onclick="generateRandomOtp()"
+                  class="px-3.5 py-2.5 rounded-xl text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+                >
+                  Random OTP
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Response Box -->
+          <div class="mt-6 pt-4 border-t border-slate-800">
+            <div class="flex items-center justify-between text-xs text-slate-400 mb-2">
+              <span>Server Response Payload:</span>
+              <span id="landing-latency" class="font-mono text-emerald-400">Latency: ~62ms</span>
+            </div>
+            <pre id="landing-response" class="p-3 rounded-xl bg-slate-950 border border-slate-800/80 font-mono text-[11px] text-emerald-300 overflow-x-auto leading-relaxed">&#123;
+  "success": true,
+  "messageId": "msg_otp_e41982b0",
+  "status": "delivered",
+  "channel": "wechat",
+  "botId": "bot_wx_dev_cluster_01"
+&#125;</pre>
+          </div>
+        </div>
+
+        <!-- Architecture Breakdown Card -->
+        <div class="lg:col-span-6 rounded-2xl border border-slate-800 bg-[#0e1320]/80 backdrop-blur p-6 shadow-2xl flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+              <span class="text-sm font-semibold text-white">Multi-Tenant Technical Architecture</span>
+              <span class="text-xs text-indigo-400 font-mono">End-to-End Pipeline</span>
+            </div>
+
+            <!-- Architecture Flowchart -->
+            <div class="mt-5 space-y-3 font-mono text-xs">
+              <div class="p-3 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                  <span class="w-7 h-7 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center font-bold">1</span>
+                  <div>
+                    <strong class="text-white">Client App / Website</strong>
+                    <p class="text-[11px] text-slate-400">Triggers REST API / Webhook</p>
+                  </div>
+                </div>
+                <span class="text-slate-400 font-mono">HTTPS POST</span>
+              </div>
+
+              <div class="text-center text-slate-500 text-xs">▼</div>
+
+              <div class="p-3 rounded-xl bg-slate-900 border border-indigo-500/40 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                  <span class="w-7 h-7 rounded-lg bg-indigo-500/30 text-indigo-300 flex items-center justify-center font-bold">2</span>
+                  <div>
+                    <strong class="text-white">MsgBridge SaaS Backend</strong>
+                    <p class="text-[11px] text-slate-400">Auth, Rate Limiting, Supabase Postgres</p>
+                  </div>
+                </div>
+                <span class="text-indigo-400 font-mono">Token Bucket</span>
+              </div>
+
+              <div class="text-center text-slate-500 text-xs">▼</div>
+
+              <div class="p-3 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                  <span class="w-7 h-7 rounded-lg bg-violet-500/20 text-violet-400 flex items-center justify-center font-bold">3</span>
+                  <div>
+                    <strong class="text-white">Wechaty Cluster Manager</strong>
+                    <p class="text-[11px] text-slate-400">Dockerized Bot Worker Sessions Pool</p>
+                  </div>
+                </div>
+                <span class="text-emerald-400 font-mono">Pool Active</span>
+              </div>
+
+              <div class="text-center text-slate-500 text-xs">▼</div>
+
+              <div class="grid grid-cols-2 gap-2">
+                <div class="p-2.5 rounded-lg bg-slate-950 border border-slate-800 text-center">
+                  <span class="text-xs text-slate-300 font-semibold">Bot Instance 1</span>
+                  <span class="block text-[10px] text-emerald-400">Tenant A Session</span>
+                </div>
+                <div class="p-2.5 rounded-lg bg-slate-950 border border-slate-800 text-center">
+                  <span class="text-xs text-slate-300 font-semibold">Bot Instance 2</span>
+                  <span class="block text-[10px] text-emerald-400">Tenant B Session</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-6 pt-4 border-t border-slate-800 text-xs text-slate-400 flex items-center justify-between">
+            <span>Isolation: Tenant Data & Sessions Isolated</span>
+            <a href="/login" class="text-indigo-400 hover:underline">Explore Architecture Docs →</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features Grid -->
+  <section id="features" class="py-20 border-t border-slate-800/80 bg-[#090d16]">
+    <div class="max-w-7xl mx-auto px-6">
+      <div class="text-center max-w-2xl mx-auto mb-16">
+        <h2 class="text-3xl font-bold text-white tracking-tight">Engineered for High-Reliability Messaging</h2>
+        <p class="mt-4 text-slate-400 text-sm">Everything developers and companies need to replace fragile SMS gateways with dependable chat channels.</p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div class="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 hover:border-indigo-500/40 transition-colors">
+          <div class="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center mb-4">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+            </svg>
+          </div>
+          <h3 class="text-lg font-semibold text-white mb-2">QR Code Linking</h3>
+          <p class="text-sm text-slate-400 leading-relaxed">
+            Link any messaging account in seconds by scanning a dynamic QR code. Automated heartbeat keep-alives and reconnection.
+          </p>
+        </div>
+
+        <div class="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 hover:border-indigo-500/40 transition-colors">
+          <div class="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center mb-4">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+          </div>
+          <h3 class="text-lg font-semibold text-white mb-2">Sub-Second Delivery</h3>
+          <p class="text-sm text-slate-400 leading-relaxed">
+            Direct socket-level dispatch guarantees your OTPs and transactional notifications arrive in milliseconds, avoiding user drop-off.
+          </p>
+        </div>
+
+        <div class="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 hover:border-indigo-500/40 transition-colors">
+          <div class="w-10 h-10 rounded-xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center mb-4">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+            </svg>
+          </div>
+          <h3 class="text-lg font-semibold text-white mb-2">Dedicated Admin Console</h3>
+          <p class="text-sm text-slate-400 leading-relaxed">
+            Full observability: monitor bot health across all nodes, track messages per minute, inspect failure stacks, and manage billing.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Pricing Section -->
+  <section id="pricing" class="py-20 border-t border-slate-800/80 bg-[#07090e]">
+    <div class="max-w-7xl mx-auto px-6">
+      <div class="text-center max-w-2xl mx-auto mb-16">
+        <h2 class="text-3xl font-bold text-white tracking-tight">Transparent, Developer-Friendly Pricing</h2>
+        <p class="mt-4 text-slate-400 text-sm">Pay only for what you send. No hidden subscription traps.</p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+        <!-- Free Tier -->
+        <div class="p-8 rounded-2xl bg-slate-900/40 border border-slate-800 flex flex-col justify-between">
+          <div>
+            <h3 class="text-lg font-semibold text-white">Hobby / Sandbox</h3>
+            <p class="text-xs text-slate-400 mt-1">For testing and personal prototypes</p>
+            <div class="mt-6 flex items-baseline gap-1">
+              <span class="text-4xl font-extrabold text-white">$0</span>
+              <span class="text-slate-400 text-sm">/month</span>
+            </div>
+            <ul class="mt-8 space-y-3 text-xs text-slate-300">
+              <li class="flex items-center gap-2">✓ 1,000 Free Credits</li>
+              <li class="flex items-center gap-2">✓ 1 Active Bot Session</li>
+              <li class="flex items-center gap-2">✓ 60 requests/min rate limit</li>
+              <li class="flex items-center gap-2">✓ 7-day log retention</li>
+            </ul>
+          </div>
+          <a href="/register" class="mt-8 block text-center py-2.5 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-white transition-colors">
+            Get Started Free
+          </a>
+        </div>
+
+        <!-- Developer Tier (Featured) -->
+        <div class="p-8 rounded-2xl bg-gradient-to-b from-indigo-950/40 to-slate-900 border-2 border-indigo-500 shadow-2xl shadow-indigo-500/10 flex flex-col justify-between relative">
+          <div class="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-indigo-500 text-white text-[10px] font-bold uppercase tracking-wider">
+            Most Popular
+          </div>
+          <div>
+            <h3 class="text-lg font-semibold text-white">Developer</h3>
+            <p class="text-xs text-indigo-300 mt-1">For scaling web applications & startups</p>
+            <div class="mt-6 flex items-baseline gap-1">
+              <span class="text-4xl font-extrabold text-white">$29</span>
+              <span class="text-slate-400 text-sm">/month</span>
+            </div>
+            <ul class="mt-8 space-y-3 text-xs text-slate-200">
+              <li class="flex items-center gap-2 font-medium">✓ 2,500 Credits Included</li>
+              <li class="flex items-center gap-2">✓ 3 Active Bot Sessions</li>
+              <li class="flex items-center gap-2">✓ 180 requests/min rate limit</li>
+              <li class="flex items-center gap-2">✓ 30-day log history & analytics</li>
+              <li class="flex items-center gap-2">✓ Webhook failure retries</li>
+            </ul>
+          </div>
+          <a href="/register" class="mt-8 block text-center py-2.5 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30 transition-all">
+            Start Developer Plan
+          </a>
+        </div>
+
+        <!-- Pro Tier -->
+        <div class="p-8 rounded-2xl bg-slate-900/40 border border-slate-800 flex flex-col justify-between">
+          <div>
+            <h3 class="text-lg font-semibold text-white">Enterprise Cluster</h3>
+            <p class="text-xs text-slate-400 mt-1">For high-throughput enterprise routing</p>
+            <div class="mt-6 flex items-baseline gap-1">
+              <span class="text-4xl font-extrabold text-white">$99</span>
+              <span class="text-slate-400 text-sm">/month</span>
+            </div>
+            <ul class="mt-8 space-y-3 text-xs text-slate-300">
+              <li class="flex items-center gap-2">✓ 15,000 Credits Included</li>
+              <li class="flex items-center gap-2">✓ Unlimited Bot Sessions</li>
+              <li class="flex items-center gap-2">✓ 1,200 requests/min rate limit</li>
+              <li class="flex items-center gap-2">✓ Dedicated Pod Isolation</li>
+              <li class="flex items-center gap-2">✓ 24/7 SLA & priority routing</li>
+            </ul>
+          </div>
+          <a href="/register" class="mt-8 block text-center py-2.5 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-white transition-colors">
+            Contact Sales
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="py-12 border-t border-slate-800 bg-[#06080e] text-slate-400 text-xs">
+    <div class="max-w-7xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-4">
+      <div class="flex items-center gap-2">
+        <span class="font-bold text-slate-200">MsgBridge SaaS</span>
+        <span>— Multi-Tenant Wechaty & ChatOTP Platform</span>
+      </div>
+      <div class="flex items-center gap-6">
+        <a href="/login" class="hover:text-white transition-colors">Sign In</a>
+        <a href="/dashboard/docs" class="hover:text-white transition-colors">API Reference</a>
+        <a href="/dashboard" class="hover:text-white transition-colors">Console</a>
+      </div>
+    </div>
+  </footer>
+
+  <script is:inline>
+    function generateRandomOtp() {
+      const otp = Math.floor(100000 + Math.random() * 900000);
+      document.getElementById('landing-content').value = `Your MsgBridge verification code is ${otp}. Valid for 5 minutes. Do not share.`;
+    }
+
+    async function triggerDemoSend() {
+      const recipient = document.getElementById('landing-recipient').value;
+      const content = document.getElementById('landing-content').value;
+      const resBox = document.getElementById('landing-response');
+      const latencyBox = document.getElementById('landing-latency');
+      const sendBtn = document.getElementById('landing-send-btn');
+
+      sendBtn.disabled = true;
+      sendBtn.innerHTML = `<span>Dispatching...</span>`;
+
+      const startTime = performance.now();
+      try {
+        const res = await fetch('/api/v1/messages/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ recipient, message: content, type: 'otp' })
+        });
+
+        const data = await res.json();
+        const duration = Math.round(performance.now() - startTime);
+        latencyBox.textContent = `Latency: ${duration}ms`;
+        resBox.textContent = JSON.stringify(data, null, 2);
+
+        if (res.ok) {
+          window.showToast?.('OTP Dispatched successfully via WeChat worker!', 'success');
+        } else if (res.status === 401) {
+          resBox.textContent = JSON.stringify({
+            hint: "Sign in with Demo credentials to execute real live API calls!",
+            status: 401,
+            auth: "Please login or provide Bearer API Key"
+          }, null, 2);
+          window.showToast?.('Please sign in or use an API key for live delivery', 'info');
+        } else {
+          window.showToast?.(data.error || 'Failed to dispatch', 'error');
+        }
+      } catch (err) {
+        resBox.textContent = JSON.stringify({ error: err.message }, null, 2);
+      } finally {
+        sendBtn.disabled = false;
+        sendBtn.innerHTML = `<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg><span>Dispatch Message Test</span>`;
+      }
+    }
+  </script>
+</MainLayout>

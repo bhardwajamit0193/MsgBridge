@@ -1,0 +1,197 @@
+---
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import { getAuthenticatedUser } from '../../lib/auth.js';
+import { query } from '../../lib/db.js';
+
+const user = await getAuthenticatedUser(Astro.request);
+if (!user || user.role !== 'admin') {
+  return Astro.redirect('/dashboard');
+}
+
+// Fetch all bots across all tenants
+const botsRes = await query(`
+  SELECT 
+    b.*, 
+    u.email as owner_email,
+    u.name as owner_name,
+    (SELECT COUNT(*) FROM messages m WHERE m.bot_id = b.id) as message_count
+  FROM bots b
+  JOIN users u ON b.user_id = u.id
+  ORDER BY b.last_active_at DESC
+`);
+const allBots = botsRes.rows;
+
+// Fetch system logs
+const logsRes = await query(`
+  SELECT l.*, b.name as bot_name, u.email as owner_email
+  FROM bot_logs l
+  JOIN bots b ON l.bot_id = b.id
+  JOIN users u ON b.user_id = u.id
+  ORDER BY l.created_at DESC
+  LIMIT 100
+`);
+const logs = logsRes.rows;
+
+const onlineBots = allBots.filter(b => b.status === 'online').length;
+const offlineBots = allBots.filter(b => b.status === 'offline').length;
+---
+
+<AdminLayout title="Global Bot Health & Incident Logs" activeNav="bots">
+  <div class="space-y-8">
+    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div>
+        <h2 class="text-xl font-bold text-white">Cluster Bot Fleet Health</h2>
+        <p class="text-xs text-slate-400 mt-1">Multi-tenant Wechaty session supervisor and diagnostic telemetry</p>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <div class="flex items-center gap-3 px-4 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs">
+          <span class="flex items-center gap-1.5 text-emerald-400">
+            <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+            <strong>{onlineBots}</strong> Online
+          </span>
+          <span class="w-px h-3.5 bg-slate-800"></span>
+          <span class="text-slate-400">
+            <strong>{offlineBots}</strong> Offline
+          </span>
+        </div>
+
+        <button
+          onclick="window.location.reload()"
+          class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+        >
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Bots Fleet Table -->
+    <div class="rounded-2xl bg-slate-900/60 border border-slate-800 overflow-hidden glass-panel">
+      <div class="p-6 border-b border-slate-800 flex items-center justify-between">
+        <div>
+          <h3 class="font-semibold text-white text-base">All Deployed Bot Instances</h3>
+          <p class="text-xs text-slate-400">Active Wechaty worker containers across all tenant namespaces</p>
+        </div>
+        <span class="text-xs font-mono text-indigo-300">{allBots.length} Total Bots</span>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-xs">
+          <thead class="bg-slate-950/70 border-b border-slate-800 text-slate-400 uppercase font-mono text-[10px]">
+            <tr>
+              <th class="px-6 py-3.5">Bot ID / Label</th>
+              <th class="px-6 py-3.5">Owner Tenant</th>
+              <th class="px-6 py-3.5">Platform</th>
+              <th class="px-6 py-3.5">Status</th>
+              <th class="px-6 py-3.5">Messages</th>
+              <th class="px-6 py-3.5">Linked Session</th>
+              <th class="px-6 py-3.5">Last Active</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-800/60 text-slate-300">
+            {allBots.map((bot) => {
+              const isOnline = bot.status === 'online';
+              const isScanning = bot.status === 'qr_ready' || bot.status === 'scanning';
+              const account = typeof bot.account_info === 'string' ? JSON.parse(bot.account_info || '{}') : (bot.account_info || {});
+
+              return (
+                <tr class="hover:bg-slate-800/30 transition-colors">
+                  <td class="px-6 py-4">
+                    <div class="font-semibold text-white">{bot.name}</div>
+                    <div class="text-[11px] font-mono text-indigo-300">{bot.id}</div>
+                  </td>
+                  <td class="px-6 py-4">
+                    <div class="text-slate-200">{bot.owner_name}</div>
+                    <div class="text-[11px] text-slate-400 font-mono">{bot.owner_email}</div>
+                  </td>
+                  <td class="px-6 py-4 font-mono uppercase text-[11px] text-slate-300">{bot.platform}</td>
+                  <td class="px-6 py-4">
+                    <span class={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase ${
+                      isOnline ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/30' :
+                      isScanning ? 'bg-amber-500/10 text-amber-300 border border-amber-500/30' :
+                      'bg-slate-800 text-slate-400 border border-slate-700'
+                    }`}>
+                      <span class={`w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-emerald-400 glow-emerald' : isScanning ? 'bg-amber-400' : 'bg-slate-500'}`}></span>
+                      {bot.status}
+                    </span>
+                  </td>
+                  <td class="px-6 py-4 font-mono text-slate-200">{bot.message_count || 0}</td>
+                  <td class="px-6 py-4 font-mono text-[11px] text-slate-400">
+                    {account.wechatId ? `${account.nickname || 'Linked'} (${account.wechatId})` : '—'}
+                  </td>
+                  <td class="px-6 py-4 text-slate-400 text-[11px]">{new Date(bot.last_active_at).toLocaleString()}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Global Cluster Error Logs Stream (As specified in docs) -->
+    <div class="rounded-2xl bg-slate-900/60 border border-slate-800 p-6 glass-panel">
+      <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-4 border-b border-slate-800 gap-4">
+        <div>
+          <h3 class="font-semibold text-white text-base">Global Cluster Diagnostics & Error Log Stream</h3>
+          <p class="text-xs text-slate-400">Inspect container lifecycle crashes, network socket drops, and QR scan events</p>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <select id="admin-log-filter" onchange="filterAdminLogs()" class="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300">
+            <option value="all">All Levels</option>
+            <option value="error">Errors Only</option>
+            <option value="warn">Warnings Only</option>
+            <option value="info">Info Only</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="mt-4 space-y-2 max-h-96 overflow-y-auto font-mono text-xs pr-2" id="admin-logs-list">
+        {logs.map((log) => {
+          const isError = log.level === 'error';
+          const isWarn = log.level === 'warn';
+          return (
+            <div class="admin-log-row p-3 rounded-xl bg-slate-950/80 border border-slate-800/80 flex items-start justify-between gap-4" data-level={log.level}>
+              <div class="flex items-start gap-3">
+                <span class={`px-2 py-0.5 rounded text-[10px] uppercase font-bold shrink-0 ${
+                  isError ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' :
+                  isWarn ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' :
+                  'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
+                }`}>
+                  {log.level}
+                </span>
+                <div>
+                  <div class="text-slate-200">{log.message}</div>
+                  <div class="text-slate-500 text-[11px] mt-0.5">
+                    Bot: <strong class="text-slate-400">{log.bot_name}</strong> · Tenant: <span class="text-slate-400">{log.owner_email}</span>
+                  </div>
+                </div>
+              </div>
+              <span class="text-slate-500 text-[10px] shrink-0 font-mono">
+                {new Date(log.created_at).toLocaleTimeString()}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  </div>
+
+  <script is:inline>
+    function filterAdminLogs() {
+      const level = document.getElementById('admin-log-filter').value;
+      const rows = document.querySelectorAll('.admin-log-row');
+
+      rows.forEach(r => {
+        const rowLevel = r.getAttribute('data-level');
+        if (level === 'all' || rowLevel === level) {
+          r.style.display = '';
+        } else {
+          r.style.display = 'none';
+        }
+      });
+    }
+  </script>
+</AdminLayout>

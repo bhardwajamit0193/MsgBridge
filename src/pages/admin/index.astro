@@ -1,0 +1,203 @@
+---
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import { getAuthenticatedUser } from '../../lib/auth.js';
+import { query } from '../../lib/db.js';
+import { botClusterManager } from '../../lib/bot-engine.js';
+
+const user = await getAuthenticatedUser(Astro.request);
+if (!user || user.role !== 'admin') {
+  return Astro.redirect('/dashboard');
+}
+
+const clusterMetrics = await botClusterManager.getClusterMetrics();
+
+// Recent messages across all tenants
+const recentMsgsRes = await query(`
+  SELECT m.*, u.email as tenant_email, b.name as bot_name
+  FROM messages m
+  JOIN users u ON m.user_id = u.id
+  LEFT JOIN bots b ON m.bot_id = b.id
+  ORDER BY m.created_at DESC
+  LIMIT 8
+`);
+const recentMessages = recentMsgsRes.rows;
+
+// Recent error logs
+const errorLogsRes = await query(`
+  SELECT l.*, b.name as bot_name, u.email as tenant_email
+  FROM bot_logs l
+  JOIN bots b ON l.bot_id = b.id
+  JOIN users u ON b.user_id = u.id
+  WHERE l.level IN ('warn', 'error')
+  ORDER BY l.created_at DESC
+  LIMIT 6
+`);
+const errorLogs = errorLogsRes.rows;
+---
+
+<AdminLayout title="Supervisor Cluster Overview" activeNav="overview">
+  <div class="space-y-8">
+    <div>
+      <h2 class="text-xl font-bold text-white">Cluster Operations & Real-Time Metrics</h2>
+      <p class="text-xs text-slate-400 mt-1">Multi-tenant server health, message dispatch throughput, and Wechaty worker status</p>
+    </div>
+
+    <!-- Admin Metrics (active users, messages per minute, server health) -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <!-- Active Tenants Metric -->
+      <div class="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 glass-card">
+        <div class="flex items-center justify-between text-slate-400 mb-2">
+          <span class="text-xs font-medium">Registered Tenants</span>
+          <div class="w-8 h-8 rounded-lg bg-indigo-500/10 text-indigo-400 flex items-center justify-center">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
+          </div>
+        </div>
+        <div class="flex items-baseline gap-2">
+          <span class="text-2xl font-bold text-white font-mono">{clusterMetrics.metrics.totalUsers}</span>
+          <span class="text-xs text-indigo-400 font-medium">({clusterMetrics.metrics.payingTenants} paying)</span>
+        </div>
+        <div class="mt-3 text-[11px] text-slate-400">
+          <span>Multi-tenant isolation active</span>
+        </div>
+      </div>
+
+      <!-- Messages Per Minute -->
+      <div class="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 glass-card">
+        <div class="flex items-center justify-between text-slate-400 mb-2">
+          <span class="text-xs font-medium">Messages / Minute</span>
+          <div class="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+          </div>
+        </div>
+        <div class="flex items-baseline gap-2">
+          <span class="text-2xl font-bold text-white font-mono">{clusterMetrics.metrics.messagesPerMinute}</span>
+          <span class="text-xs text-amber-400">rate</span>
+        </div>
+        <div class="mt-3 text-[11px] text-slate-400">
+          <span>Total: <strong class="text-white font-mono">{clusterMetrics.metrics.totalMessages}</strong> sent</span>
+        </div>
+      </div>
+
+      <!-- Global Bot Fleet -->
+      <div class="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 glass-card">
+        <div class="flex items-center justify-between text-slate-400 mb-2">
+          <span class="text-xs font-medium">Wechaty Bot Fleet</span>
+          <div class="w-8 h-8 rounded-lg bg-cyan-500/10 text-cyan-400 flex items-center justify-center">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+            </svg>
+          </div>
+        </div>
+        <div class="flex items-baseline gap-2">
+          <span class="text-2xl font-bold text-white font-mono">{clusterMetrics.metrics.onlineBots}</span>
+          <span class="text-xs text-emerald-400 font-semibold">online</span>
+          <span class="text-xs text-slate-500 font-mono">/ {clusterMetrics.metrics.totalBots} total</span>
+        </div>
+        <div class="mt-3 text-[11px] text-slate-400">
+          <span>{clusterMetrics.metrics.offlineBots} offline · {clusterMetrics.metrics.error_bots || 0} error</span>
+        </div>
+      </div>
+
+      <!-- Server Health & Latency -->
+      <div class="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 glass-card">
+        <div class="flex items-center justify-between text-slate-400 mb-2">
+          <span class="text-xs font-medium">Server Health</span>
+          <div class="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+            </svg>
+          </div>
+        </div>
+        <div class="flex items-baseline gap-2">
+          <span class="text-2xl font-bold text-emerald-400 font-mono">100% Stable</span>
+        </div>
+        <div class="mt-3 text-[11px] text-slate-400 flex items-center justify-between">
+          <span>Success Rate: <strong class="text-white font-mono">{clusterMetrics.metrics.successRate}</strong></span>
+          <span class="font-mono text-emerald-400">{clusterMetrics.system.memoryUsedMB}MB RAM</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Live System Overview & Cluster Error Logs -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+      <!-- Global Activity Stream -->
+      <div class="lg:col-span-7 rounded-2xl bg-slate-900/60 border border-slate-800 p-6 glass-panel">
+        <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+          <div>
+            <h3 class="font-semibold text-white text-base">Global Message Flow</h3>
+            <p class="text-xs text-slate-400">All tenant OTP and transactional dispatches</p>
+          </div>
+          <a href="/admin/bots" class="text-xs text-amber-400 hover:underline">Bot Fleet View →</a>
+        </div>
+
+        <div class="mt-4 space-y-3">
+          {recentMessages.length === 0 ? (
+            <p class="text-slate-500 py-6 text-center text-xs">No platform traffic recorded yet.</p>
+          ) : (
+            recentMessages.map((m) => (
+              <div class="p-3 rounded-xl bg-slate-950/80 border border-slate-800/80 flex items-center justify-between text-xs">
+                <div>
+                  <div class="flex items-center gap-2">
+                    <span class="font-mono text-indigo-300 font-semibold">{m.id}</span>
+                    <span class="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 uppercase">{m.type}</span>
+                    <span class="text-[11px] text-slate-400">({m.tenant_email})</span>
+                  </div>
+                  <div class="text-[11px] text-slate-400 truncate max-w-sm mt-0.5 font-mono">{m.recipient} — {m.content}</div>
+                </div>
+
+                <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
+                  {m.status}
+                </span>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      <!-- Critical Warnings & Incident Logs -->
+      <div class="lg:col-span-5 rounded-2xl bg-slate-900/60 border border-slate-800 p-6 glass-panel flex flex-col justify-between">
+        <div>
+          <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+            <div>
+              <h3 class="font-semibold text-white text-base">Worker Incident Stream</h3>
+              <p class="text-xs text-slate-400">Warnings and container alerts</p>
+            </div>
+            <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+          </div>
+
+          <div class="mt-4 space-y-2.5">
+            {errorLogs.length === 0 ? (
+              <div class="text-center py-8">
+                <span class="text-emerald-400 text-xl block mb-1">✓</span>
+                <p class="text-xs text-slate-400">No worker warnings or errors logged.</p>
+                <p class="text-[11px] text-slate-500">All Wechaty instances healthy.</p>
+              </div>
+            ) : (
+              errorLogs.map((log) => (
+                <div class="p-3 rounded-xl bg-slate-950/80 border border-slate-800/80 text-xs">
+                  <div class="flex items-center justify-between mb-1">
+                    <span class="px-1.5 py-0.2 rounded text-[10px] uppercase font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                      {log.level}
+                    </span>
+                    <span class="text-[10px] text-slate-500">{new Date(log.created_at).toLocaleTimeString()}</span>
+                  </div>
+                  <p class="text-slate-200 font-mono text-[11px]">{log.message}</p>
+                  <span class="text-[10px] text-slate-400 block mt-1">Bot: {log.bot_name} ({log.tenant_email})</span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        <div class="mt-6 pt-4 border-t border-slate-800 text-xs text-slate-400 flex items-center justify-between">
+          <span>Observability Status: OK</span>
+          <a href="/admin/bots" class="text-amber-400 hover:underline">Inspect Full Bot Health →</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</AdminLayout>

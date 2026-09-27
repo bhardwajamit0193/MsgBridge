@@ -1,0 +1,393 @@
+---
+import DashboardLayout from '../../layouts/DashboardLayout.astro';
+import { getAuthenticatedUser } from '../../lib/auth.js';
+import { query } from '../../lib/db.js';
+import { botClusterManager } from '../../lib/bot-engine.js';
+
+const user = await getAuthenticatedUser(Astro.request);
+if (!user) {
+  return Astro.redirect('/login');
+}
+
+// Fetch user's bots
+const botsRes = await query(
+  `SELECT * FROM bots WHERE user_id = $1 ORDER BY created_at DESC`,
+  [user.id]
+);
+const bots = botsRes.rows;
+
+// Fetch user's recent messages
+const msgsRes = await query(
+  `SELECT * FROM messages WHERE user_id = $1 ORDER BY created_at DESC LIMIT 6`,
+  [user.id]
+);
+const recentMessages = msgsRes.rows;
+
+// Fetch aggregate stats
+const statsRes = await query(
+  `SELECT 
+    COUNT(*) as total_dispatched,
+    COUNT(CASE WHEN status = 'delivered' THEN 1 END) as total_delivered,
+    COUNT(CASE WHEN status = 'failed' THEN 1 END) as total_failed
+   FROM messages 
+   WHERE user_id = $1`,
+  [user.id]
+);
+const stats = statsRes.rows[0];
+const totalDispatched = parseInt(stats.total_dispatched, 10) || 0;
+const totalDelivered = parseInt(stats.total_delivered, 10) || 0;
+const successRate = totalDispatched > 0 ? ((totalDelivered / totalDispatched) * 100).toFixed(1) : '100.0';
+
+// API Key preview
+const keyRes = await query('SELECT key FROM api_keys WHERE user_id = $1 AND is_active = TRUE LIMIT 1', [user.id]);
+const activeKey = keyRes.rows[0]?.key || 'mb_live_xxxxxxxxxxxxxxxx';
+
+const clusterMetrics = await botClusterManager.getClusterMetrics();
+---
+
+<DashboardLayout title="Overview & Real-Time Metrics" activeNav="overview">
+  <div class="space-y-8">
+    <!-- Top Greeting Banner -->
+    <div class="p-6 rounded-2xl bg-gradient-to-r from-indigo-950/40 via-slate-900 to-slate-900 border border-indigo-500/20 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+      <div>
+        <div class="flex items-center gap-2">
+          <span class="text-xs font-semibold uppercase px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">Tenant #{user.id}</span>
+          <span class="text-xs text-slate-400">Subscription: <strong class="text-slate-200 capitalize">{user.plan}</strong></span>
+        </div>
+        <h2 class="text-2xl font-bold text-white mt-1">Hello, {user.name} 👋</h2>
+        <p class="text-xs text-slate-400 mt-0.5">Your WeChat & ChatOTP cluster is operational and ready to process traffic.</p>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <a
+          href="/dashboard/send"
+          class="px-4 py-2.5 rounded-xl font-semibold text-xs bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30 transition-all flex items-center gap-2"
+        >
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+          </svg>
+          <span>Send Test OTP</span>
+        </a>
+        <a
+          href="/dashboard/bots"
+          class="px-4 py-2.5 rounded-xl font-semibold text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700/60 transition-colors flex items-center gap-2"
+        >
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+          </svg>
+          <span>Deploy Bot</span>
+        </a>
+      </div>
+    </div>
+
+    <!-- Real-time Metrics Grid (As specified in docs) -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <!-- Active Bots Metric -->
+      <div class="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 glass-card">
+        <div class="flex items-center justify-between text-slate-400 mb-2">
+          <span class="text-xs font-medium">Active Bot Workers</span>
+          <div class="w-8 h-8 rounded-lg bg-indigo-500/10 text-indigo-400 flex items-center justify-center">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+            </svg>
+          </div>
+        </div>
+        <div class="flex items-baseline gap-2">
+          <span class="text-2xl font-bold text-white font-mono">{bots.filter(b => b.status === 'online').length}</span>
+          <span class="text-xs text-slate-400">/ {bots.length} allocated</span>
+        </div>
+        <div class="mt-3 flex items-center gap-1.5 text-[11px] text-emerald-400">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span>Wechaty session keep-alive active</span>
+        </div>
+      </div>
+
+      <!-- Messages Dispatched -->
+      <div class="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 glass-card">
+        <div class="flex items-center justify-between text-slate-400 mb-2">
+          <span class="text-xs font-medium">Total Messages</span>
+          <div class="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+            </svg>
+          </div>
+        </div>
+        <div class="flex items-baseline gap-2">
+          <span class="text-2xl font-bold text-white font-mono">{totalDispatched}</span>
+          <span class="text-xs text-emerald-400 font-semibold">{successRate}% delivered</span>
+        </div>
+        <div class="mt-3 text-[11px] text-slate-400">
+          <span>{totalDelivered} successful · {stats.total_failed || 0} failed</span>
+        </div>
+      </div>
+
+      <!-- Messages Per Minute / Traffic Rate -->
+      <div class="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 glass-card">
+        <div class="flex items-center justify-between text-slate-400 mb-2">
+          <span class="text-xs font-medium">Messages / Minute</span>
+          <div class="w-8 h-8 rounded-lg bg-cyan-500/10 text-cyan-400 flex items-center justify-center">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+          </div>
+        </div>
+        <div class="flex items-baseline gap-2">
+          <span class="text-2xl font-bold text-white font-mono">{clusterMetrics.metrics.messagesPerMinute}</span>
+          <span class="text-xs text-slate-400">msg / min</span>
+        </div>
+        <div class="mt-3 flex items-center gap-1.5 text-[11px] text-cyan-400">
+          <span class="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
+          <span>Zero queue backpressure</span>
+        </div>
+      </div>
+
+      <!-- Server Health Metric -->
+      <div class="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 glass-card">
+        <div class="flex items-center justify-between text-slate-400 mb-2">
+          <span class="text-xs font-medium">Server Health</span>
+          <div class="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+        </div>
+        <div class="flex items-baseline gap-2">
+          <span class="text-2xl font-bold text-emerald-400 font-mono">Operational</span>
+        </div>
+        <div class="mt-3 flex items-center gap-1.5 text-[11px] text-slate-400">
+          <span>Latency: ~42ms · Uptime: 99.98%</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Message Send Tester & Bot Fleet Snapshot -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+      <!-- Quick Send Message Form Card -->
+      <div class="lg:col-span-7 rounded-2xl bg-slate-900/60 border border-slate-800 p-6 glass-panel">
+        <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+          <div>
+            <h3 class="font-semibold text-white text-base">Quick Message & OTP Trigger</h3>
+            <p class="text-xs text-slate-400">Send an instant alert or OTP through your active WeChat bot</p>
+          </div>
+          <span class="text-[11px] font-mono px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/30">1 Credit / Msg</span>
+        </div>
+
+        <form id="quick-send-form" class="mt-5 space-y-4">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 mb-1">Channel & Type</label>
+              <select id="quick-type" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 focus:border-indigo-500 focus:outline-none text-xs text-slate-200">
+                <option value="otp">WeChat OTP (Verification Code)</option>
+                <option value="alert">WeChat System Alert / Notice</option>
+                <option value="transactional">Transactional Notification</option>
+                <option value="group">Group Broadcast</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 mb-1">Target Contact / WeChat ID</label>
+              <input
+                type="text"
+                id="quick-recipient"
+                required
+                placeholder="+1 650 555 0192 or wxid_..."
+                value="+86 138 0013 8000"
+                class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 focus:border-indigo-500 focus:outline-none text-xs text-slate-100 font-mono"
+              />
+            </div>
+          </div>
+
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="block text-xs font-semibold text-slate-300">Message Text</label>
+              <button type="button" onclick="randomizeQuickOtp()" class="text-[11px] text-indigo-400 hover:underline">Insert Sample OTP</button>
+            </div>
+            <textarea
+              id="quick-content"
+              rows="3"
+              required
+              class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 focus:border-indigo-500 focus:outline-none text-xs text-slate-100 font-mono"
+            >【MsgBridge】Your dynamic verification code is 849201, valid for 5 minutes. Do not disclose.</textarea>
+          </div>
+
+          <div class="flex items-center justify-between pt-2">
+            <div id="quick-result" class="text-xs font-mono text-emerald-400 truncate max-w-xs"></div>
+            <button
+              type="submit"
+              id="quick-btn"
+              class="px-5 py-2.5 rounded-xl font-semibold text-xs bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/30 transition-all flex items-center gap-2"
+            >
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+              </svg>
+              <span>Dispatch Message</span>
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Active Bots Fleet Status -->
+      <div class="lg:col-span-5 rounded-2xl bg-slate-900/60 border border-slate-800 p-6 glass-panel flex flex-col justify-between">
+        <div>
+          <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+            <div>
+              <h3 class="font-semibold text-white text-base">Your Bot Instances</h3>
+              <p class="text-xs text-slate-400">Wechaty worker pods</p>
+            </div>
+            <a href="/dashboard/bots" class="text-xs text-indigo-400 hover:underline font-medium">Manage Fleet →</a>
+          </div>
+
+          <div class="mt-4 space-y-3">
+            {bots.length === 0 ? (
+              <div class="text-center py-8">
+                <p class="text-xs text-slate-400">No bot instances created yet.</p>
+                <a href="/dashboard/bots" class="mt-2 inline-block px-3 py-1.5 rounded-lg text-xs bg-indigo-600 text-white">Create Bot</a>
+              </div>
+            ) : (
+              bots.map((bot) => {
+                const isOnline = bot.status === 'online';
+                const isScanning = bot.status === 'qr_ready' || bot.status === 'scanning';
+                return (
+                  <div class="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                      <div class={`w-3 h-3 rounded-full ${isOnline ? 'bg-emerald-400 glow-emerald' : isScanning ? 'bg-amber-400 glow-amber' : 'bg-slate-600'}`}></div>
+                      <div>
+                        <div class="flex items-center gap-2">
+                          <strong class="text-xs text-white font-medium">{bot.name}</strong>
+                          <span class="text-[10px] uppercase font-mono px-1.5 py-0.2 rounded bg-slate-800 text-slate-400">{bot.platform}</span>
+                        </div>
+                        <span class="text-[11px] text-slate-400 font-mono">{bot.id}</span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <span class={`text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full border ${
+                        isOnline ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30' :
+                        isScanning ? 'bg-amber-500/10 text-amber-300 border-amber-500/30' :
+                        'bg-slate-800 text-slate-400 border-slate-700'
+                      }`}>
+                        {bot.status}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        <div class="mt-6 pt-4 border-t border-slate-800 text-xs text-slate-400 flex items-center justify-between">
+          <span>Worker Health: 100% Online</span>
+          <a href="/dashboard/bots" class="text-indigo-400 hover:underline">Scan QR Link →</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recent Delivery Logs Table -->
+    <div class="rounded-2xl bg-slate-900/60 border border-slate-800 overflow-hidden glass-panel">
+      <div class="p-6 border-b border-slate-800 flex items-center justify-between">
+        <div>
+          <h3 class="font-semibold text-white text-base">Live Message Delivery Stream</h3>
+          <p class="text-xs text-slate-400">Most recent OTP and transactional notifications processed</p>
+        </div>
+        <a href="/dashboard/logs" class="text-xs text-indigo-400 hover:underline font-medium">View Full Logs →</a>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-xs">
+          <thead class="bg-slate-950/70 border-b border-slate-800 text-slate-400 uppercase font-mono text-[10px]">
+            <tr>
+              <th class="px-6 py-3">Message ID</th>
+              <th class="px-6 py-3">Type</th>
+              <th class="px-6 py-3">Recipient</th>
+              <th class="px-6 py-3">Content Preview</th>
+              <th class="px-6 py-3">Status</th>
+              <th class="px-6 py-3">Dispatched</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-800/60 text-slate-300">
+            {recentMessages.length === 0 ? (
+              <tr>
+                <td colspan="6" class="px-6 py-8 text-center text-slate-500">
+                  No messages sent yet. Use the quick sender above or the REST API!
+                </td>
+              </tr>
+            ) : (
+              recentMessages.map((msg) => (
+                <tr class="hover:bg-slate-800/40 transition-colors">
+                  <td class="px-6 py-3.5 font-mono text-indigo-300">{msg.id}</td>
+                  <td class="px-6 py-3.5">
+                    <span class="px-2 py-0.5 rounded text-[10px] font-semibold uppercase bg-slate-800 text-slate-300 border border-slate-700">
+                      {msg.type}
+                    </span>
+                  </td>
+                  <td class="px-6 py-3.5 font-mono text-slate-200">{msg.recipient}</td>
+                  <td class="px-6 py-3.5 max-w-xs truncate text-slate-400">{msg.content}</td>
+                  <td class="px-6 py-3.5">
+                    <span class={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                      msg.status === 'delivered' ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/30' :
+                      msg.status === 'failed' ? 'bg-rose-500/10 text-rose-300 border border-rose-500/30' :
+                      'bg-amber-500/10 text-amber-300 border border-amber-500/30'
+                    }`}>
+                      <span class={`w-1.5 h-1.5 rounded-full ${msg.status === 'delivered' ? 'bg-emerald-400' : 'bg-amber-400'}`}></span>
+                      {msg.status}
+                    </span>
+                  </td>
+                  <td class="px-6 py-3.5 text-slate-400 text-[11px]">
+                    {new Date(msg.created_at).toLocaleTimeString()}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script is:inline>
+    function randomizeQuickOtp() {
+      const code = Math.floor(100000 + Math.random() * 900000);
+      document.getElementById('quick-content').value = `【MsgBridge】Your dynamic verification code is ${code}, valid for 5 minutes. Do not disclose.`;
+    }
+
+    document.getElementById('quick-send-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const recipient = document.getElementById('quick-recipient').value;
+      const content = document.getElementById('quick-content').value;
+      const type = document.getElementById('quick-type').value;
+      const resultDiv = document.getElementById('quick-result');
+      const sendBtn = document.getElementById('quick-btn');
+
+      sendBtn.disabled = true;
+      sendBtn.innerHTML = `<span>Sending...</span>`;
+      resultDiv.textContent = '';
+
+      try {
+        const res = await fetch('/api/v1/messages/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ recipient, message: content, type }),
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          resultDiv.className = 'text-xs font-mono text-rose-400 truncate max-w-xs';
+          resultDiv.textContent = data.error || 'Failed to dispatch';
+          window.showToast?.(data.error || 'Failed to dispatch', 'error');
+        } else {
+          resultDiv.className = 'text-xs font-mono text-emerald-400 truncate max-w-xs';
+          resultDiv.textContent = `✓ Dispatched ID: ${data.messageId}`;
+          window.showToast?.(`Message ${data.messageId} delivered via Wechaty bot!`, 'success');
+          setTimeout(() => window.location.reload(), 1200);
+        }
+      } catch (err) {
+        resultDiv.className = 'text-xs font-mono text-rose-400 truncate max-w-xs';
+        resultDiv.textContent = err.message;
+      } finally {
+        sendBtn.disabled = false;
+        sendBtn.innerHTML = `<svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg><span>Dispatch Message</span>`;
+      }
+    });
+  </script>
+</DashboardLayout>

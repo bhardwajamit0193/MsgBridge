@@ -1,0 +1,197 @@
+---
+import MainLayout from './MainLayout.astro';
+import { getAuthenticatedUser } from '../lib/auth.js';
+import { query } from '../lib/db.js';
+
+interface Props {
+  title?: string;
+  activeNav?: string;
+}
+
+const { title = 'MsgBridge Dashboard', activeNav = 'overview' } = Astro.props;
+
+const user = await getAuthenticatedUser(Astro.request);
+if (!user) {
+  return Astro.redirect('/login');
+}
+
+// Fetch active bot count and credits
+const statsRes = await query(
+  `SELECT 
+    (SELECT COUNT(*) FROM bots WHERE user_id = $1 AND status = 'online') as online_bots,
+    (SELECT credits FROM users WHERE id = $1) as user_credits`,
+  [user.id]
+);
+const onlineBots = parseInt(statsRes.rows[0]?.online_bots || '0', 10);
+const userCredits = parseInt(statsRes.rows[0]?.user_credits || user.credits || '0', 10);
+
+const navItems = [
+  { id: 'overview', label: 'Dashboard', href: '/dashboard', icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' },
+  { id: 'bots', label: 'Bot Management', href: '/dashboard/bots', icon: 'M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z', badge: onlineBots > 0 ? `${onlineBots} Online` : null },
+  { id: 'templates', label: 'Message Templates', href: '/dashboard/templates', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
+  { id: 'send', label: 'Message & OTP', href: '/dashboard/send', icon: 'M12 19l9 2-9-18-9 18 9-2zm0 0v-8' },
+  { id: 'logs', label: 'Message Logs', href: '/dashboard/logs', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01' },
+  { id: 'api-keys', label: 'API Keys', href: '/dashboard/api-keys', icon: 'M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z' },
+  { id: 'billing', label: 'Billing & Credits', href: '/dashboard/billing', icon: 'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z' },
+  { id: 'docs', label: 'API Reference', href: '/dashboard/docs', icon: 'M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4' },
+];
+---
+
+<MainLayout title={title}>
+  <div class="flex h-screen overflow-hidden bg-[#07090e]">
+    <!-- Sidebar -->
+    <aside class="w-72 border-r border-slate-800/80 bg-[#0b0f19] flex flex-col justify-between shrink-0">
+      <div>
+        <!-- Logo / Brand -->
+        <div class="p-6 border-b border-slate-800/60 flex items-center justify-between">
+          <a href="/dashboard" class="flex items-center gap-2.5 group">
+            <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center shadow-lg shadow-indigo-500/20 group-hover:scale-105 transition-transform">
+              <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              </svg>
+            </div>
+            <div>
+              <span class="font-bold text-lg tracking-tight bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">MsgBridge</span>
+              <span class="block text-[10px] uppercase font-semibold text-indigo-400 tracking-wider">ChatOTP Hub</span>
+            </div>
+          </a>
+        </div>
+
+        <!-- Navigation Links -->
+        <nav class="p-4 space-y-1.5">
+          <div class="px-3 py-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Workspace</div>
+          {navItems.map((item) => {
+            const isActive = activeNav === item.id;
+            return (
+              <a
+                href={item.href}
+                class={`flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
+                  isActive
+                    ? 'bg-indigo-600/15 text-indigo-300 border border-indigo-500/30 shadow-sm shadow-indigo-950'
+                    : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/50'
+                }`}
+              >
+                <div class="flex items-center gap-3 min-w-0">
+                  <svg class={`w-4 h-4 shrink-0 ${isActive ? 'text-indigo-400' : 'text-slate-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d={item.icon} />
+                  </svg>
+                  <span class="truncate whitespace-nowrap">{item.label}</span>
+                </div>
+                {item.badge && (
+                  <span class="shrink-0 whitespace-nowrap text-[10px] px-2 py-0.5 rounded-full font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0"></span>
+                    <span>{item.badge}</span>
+                  </span>
+                )}
+              </a>
+            );
+          })}
+
+          {user.role === 'admin' && (
+            <div class="pt-4 mt-2 border-t border-slate-800/60">
+              <div class="px-3 py-1.5 text-[11px] font-semibold text-amber-400/90 uppercase tracking-wider flex items-center gap-1.5">
+                <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+                Admin Panel
+              </div>
+              <a
+                href="/admin"
+                class="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium text-amber-300/90 hover:bg-amber-500/10 border border-amber-500/20 transition-all duration-200"
+              >
+                <svg class="w-4 h-4 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                <span>Cluster Admin</span>
+              </a>
+            </div>
+          )}
+        </nav>
+      </div>
+
+      <!-- User footer profile -->
+      <div class="p-4 border-t border-slate-800/80 bg-[#090d15]">
+        <div class="flex items-center justify-between mb-3 px-2">
+          <div class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 glow-emerald"></span>
+            <span class="text-xs text-slate-300">Cluster Online</span>
+          </div>
+          <span class="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700/60 uppercase">
+            {user.plan}
+          </span>
+        </div>
+
+        <div class="flex items-center justify-between p-2 rounded-xl bg-slate-900/60 border border-slate-800">
+          <div class="truncate mr-2">
+            <p class="text-xs font-semibold text-slate-200 truncate">{user.name}</p>
+            <p class="text-[11px] text-slate-400 truncate">{user.email}</p>
+          </div>
+          <button
+            onclick="handleLogout()"
+            title="Log out"
+            class="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+          >
+            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <div class="flex-1 flex flex-col h-full overflow-hidden">
+      <!-- Top Navigation Bar -->
+      <header class="h-16 border-b border-slate-800/80 bg-[#0b0f19]/80 backdrop-blur px-8 flex items-center justify-between shrink-0">
+        <div class="flex items-center gap-4">
+          <h1 class="text-lg font-semibold text-slate-100">{title}</h1>
+          <div class="hidden md:flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900 border border-slate-800 text-xs">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span class="text-slate-400">Node Cluster: <strong class="text-slate-200 font-mono">aws-sg-01</strong></span>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-4">
+          <!-- Credits Display & Top-up -->
+          <a
+            href="/dashboard/billing"
+            class="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-indigo-950/40 border border-indigo-500/30 hover:border-indigo-500/60 transition-colors group"
+          >
+            <svg class="w-4 h-4 text-indigo-400 group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+            <span class="text-xs font-medium text-slate-300">Credits:</span>
+            <span class="text-xs font-bold font-mono text-indigo-300">{userCredits.toLocaleString()}</span>
+            <span class="text-[10px] font-semibold bg-indigo-600/30 text-indigo-300 px-1.5 py-0.5 rounded ml-1">+ Add</span>
+          </a>
+
+          <!-- Quick Send Button -->
+          <a
+            href="/dashboard/send"
+            class="hidden sm:inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white shadow-md shadow-indigo-600/20 transition-all hover:shadow-indigo-600/30"
+          >
+            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4" />
+            </svg>
+            Send OTP / Msg
+          </a>
+        </div>
+      </header>
+
+      <!-- Scrollable Main View -->
+      <main class="flex-1 overflow-y-auto p-8 bg-[#07090e]">
+        <slot />
+      </main>
+    </div>
+  </div>
+
+  <script is:inline>
+    async function handleLogout() {
+      try {
+        await fetch('/api/v1/auth/logout', { method: 'POST' });
+        window.location.href = '/login';
+      } catch (e) {
+        window.location.href = '/login';
+      }
+    }
+  </script>
+</MainLayout>

@@ -1,0 +1,137 @@
+---
+import DashboardLayout from '../../layouts/DashboardLayout.astro';
+import { getAuthenticatedUser } from '../../lib/auth.js';
+import { query } from '../../lib/db.js';
+
+const user = await getAuthenticatedUser(Astro.request);
+if (!user) {
+  return Astro.redirect('/login');
+}
+
+// Fetch active API key for code examples
+const keyRes = await query(
+  `SELECT key FROM api_keys WHERE user_id = $1 AND is_active = TRUE ORDER BY created_at DESC LIMIT 1`,
+  [user.id]
+);
+const activeKey = keyRes.rows[0]?.key || 'mb_live_xxxxxxxxxxxxxxxx';
+---
+
+<DashboardLayout title="API Reference & Integration" activeNav="docs">
+  <div class="space-y-8 max-w-5xl">
+    <div>
+      <h2 class="text-xl font-bold text-white">REST API Documentation</h2>
+      <p class="text-xs text-slate-400 mt-1">Integrate MsgBridge directly into your authentication pipeline, webhooks, or backend services</p>
+    </div>
+
+    <!-- Quick Reference Card -->
+    <div class="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 glass-panel space-y-3">
+      <h3 class="text-sm font-semibold text-white">Authentication</h3>
+      <p class="text-xs text-slate-400 leading-relaxed">
+        All REST API endpoints require HTTP Bearer token authentication in the <code class="text-indigo-300 font-mono bg-slate-950 px-1.5 py-0.5 rounded">Authorization</code> header:
+      </p>
+      <div class="p-3 rounded-xl bg-slate-950 border border-slate-800 font-mono text-xs text-indigo-300">
+        Authorization: Bearer {activeKey}
+      </div>
+    </div>
+
+    <!-- Endpoint 1: Send Message / OTP -->
+    <div class="rounded-2xl bg-slate-900/60 border border-slate-800 overflow-hidden glass-panel">
+      <div class="p-6 border-b border-slate-800 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <span class="px-2.5 py-1 rounded-lg text-xs font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">POST</span>
+          <span class="font-mono text-sm text-white font-semibold">/api/v1/messages/send</span>
+        </div>
+        <span class="text-xs text-slate-400">Rate Limit: 60 - 300 req/min</span>
+      </div>
+
+      <div class="p-6 space-y-6 text-xs">
+        <div>
+          <h4 class="font-semibold text-white mb-2">Request Body (JSON)</h4>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left">
+              <thead class="text-slate-400 border-b border-slate-800 font-mono text-[11px]">
+                <tr>
+                  <th class="py-2">Field</th>
+                  <th class="py-2">Type</th>
+                  <th class="py-2">Required</th>
+                  <th class="py-2">Description</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800/60 text-slate-300">
+                <tr>
+                  <td class="py-2 font-mono text-indigo-300">recipient</td>
+                  <td class="py-2 font-mono text-slate-400">string</td>
+                  <td class="py-2 font-semibold text-amber-400">Yes</td>
+                  <td class="py-2">Mobile number (+1234567890), WeChat user ID, or chatroom name.</td>
+                </tr>
+                <tr>
+                  <td class="py-2 font-mono text-indigo-300">message</td>
+                  <td class="py-2 font-mono text-slate-400">string</td>
+                  <td class="py-2 font-semibold text-amber-400">Yes</td>
+                  <td class="py-2">The message text or OTP payload to deliver.</td>
+                </tr>
+                <tr>
+                  <td class="py-2 font-mono text-indigo-300">type</td>
+                  <td class="py-2 font-mono text-slate-400">string</td>
+                  <td class="py-2 text-slate-400">No</td>
+                  <td class="py-2"><code class="text-slate-300 font-mono">'otp' | 'alert' | 'transactional' | 'group'</code> (defaults to 'otp').</td>
+                </tr>
+                <tr>
+                  <td class="py-2 font-mono text-indigo-300">botId</td>
+                  <td class="py-2 font-mono text-slate-400">string</td>
+                  <td class="py-2 text-slate-400">No</td>
+                  <td class="py-2">Specific bot instance ID. Omit to auto-route to active cluster pool.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div>
+          <h4 class="font-semibold text-white mb-2">Example cURL Request</h4>
+          <pre class="p-4 rounded-xl bg-slate-950 border border-slate-800 font-mono text-[11px] text-slate-300 overflow-x-auto leading-relaxed">curl -X POST "{Astro.url.origin}/api/v1/messages/send" \
+  -H "Authorization: Bearer {activeKey}" \
+  -H "Content-Type: application/json" \
+  -d '&#123;
+    "recipient": "+1 650 555 0192",
+    "message": "Your verification code is 492019. Valid for 5 minutes.",
+    "type": "otp"
+  &#125;'</pre>
+        </div>
+
+        <div>
+          <h4 class="font-semibold text-white mb-2">Example Response (200 OK)</h4>
+          <pre class="p-4 rounded-xl bg-slate-950 border border-slate-800 font-mono text-[11px] text-emerald-300 overflow-x-auto leading-relaxed">&#123;
+  "success": true,
+  "messageId": "msg_otp_a8b92c4f",
+  "recipient": "+1 650 555 0192",
+  "channel": "wechat",
+  "type": "otp",
+  "status": "delivered",
+  "costCredits": 1,
+  "timestamp": "2026-09-27T12:00:00.000Z",
+  "botId": "bot_wx_dev_cluster_01",
+  "remainingCredits": 2499
+&#125;</pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- Endpoint 2: List Delivery Logs -->
+    <div class="rounded-2xl bg-slate-900/60 border border-slate-800 overflow-hidden glass-panel">
+      <div class="p-6 border-b border-slate-800 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <span class="px-2.5 py-1 rounded-lg text-xs font-mono font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">GET</span>
+          <span class="font-mono text-sm text-white font-semibold">/api/v1/messages</span>
+        </div>
+        <span class="text-xs text-slate-400">Query parameters: status, type, limit, search</span>
+      </div>
+
+      <div class="p-6 space-y-4 text-xs">
+        <p class="text-slate-400">Retrieve historical message delivery logs for audit, compliance, and webhook verification.</p>
+        <pre class="p-4 rounded-xl bg-slate-950 border border-slate-800 font-mono text-[11px] text-slate-300 overflow-x-auto">curl "{Astro.url.origin}/api/v1/messages?status=delivered&limit=10" \
+  -H "Authorization: Bearer {activeKey}"</pre>
+      </div>
+    </div>
+  </div>
+</DashboardLayout>

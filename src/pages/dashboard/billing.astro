@@ -1,0 +1,252 @@
+---
+import DashboardLayout from '../../layouts/DashboardLayout.astro';
+import { getAuthenticatedUser } from '../../lib/auth.js';
+import { query } from '../../lib/db.js';
+
+const user = await getAuthenticatedUser(Astro.request);
+if (!user) {
+  return Astro.redirect('/login');
+}
+
+// Fetch billing transactions
+const txRes = await query(
+  `SELECT * FROM billing_transactions WHERE user_id = $1 ORDER BY created_at DESC`,
+  [user.id]
+);
+const transactions = txRes.rows;
+
+// Fetch current credits
+const userRes = await query('SELECT credits, plan FROM users WHERE id = $1', [user.id]);
+const currentCredits = userRes.rows[0]?.credits || 0;
+const currentPlan = userRes.rows[0]?.plan || 'developer';
+---
+
+<DashboardLayout title="Billing & Credit Allocation" activeNav="billing">
+  <div class="space-y-8">
+    <div>
+      <h2 class="text-xl font-bold text-white">Billing & Credit Management</h2>
+      <p class="text-xs text-slate-400 mt-1">Manage tenant credits, plan upgrades, and past transaction receipts</p>
+    </div>
+
+    <!-- Credit Balance Summary Card -->
+    <div class="p-6 rounded-2xl bg-gradient-to-r from-indigo-950/40 via-slate-900 to-slate-900 border border-indigo-500/20 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+      <div>
+        <span class="text-xs font-semibold uppercase text-indigo-400 tracking-wider">Current Account Balance</span>
+        <div class="flex items-baseline gap-3 mt-1">
+          <span class="text-4xl font-extrabold text-white font-mono">{currentCredits.toLocaleString()}</span>
+          <span class="text-sm text-slate-400">Credits Remaining</span>
+        </div>
+        <p class="text-xs text-slate-400 mt-2">
+          Plan: <strong class="text-indigo-300 uppercase font-mono">{currentPlan}</strong> · Each outbound SMS/OTP costs 1 credit.
+        </p>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-3">
+        <button
+          onclick="topupCredits(1000, 10)"
+          class="px-4 py-2.5 rounded-xl font-semibold text-xs bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 transition-colors"
+        >
+          +1,000 Credits ($10)
+        </button>
+        <button
+          onclick="topupCredits(5000, 45)"
+          class="px-5 py-2.5 rounded-xl font-semibold text-xs bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white shadow-lg shadow-indigo-600/30 transition-all hover:scale-105"
+        >
+          +5,000 Credits ($45 - Best Value)
+        </button>
+      </div>
+    </div>
+
+    <!-- Subscription Plans Grid -->
+    <div>
+      <h3 class="text-base font-semibold text-white mb-4">Subscription Tiers</h3>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <!-- Developer Plan -->
+        <div class={`p-6 rounded-2xl border flex flex-col justify-between ${
+          currentPlan === 'developer'
+            ? 'bg-indigo-950/20 border-indigo-500 shadow-xl shadow-indigo-500/10'
+            : 'bg-slate-900/40 border-slate-800'
+        }`}>
+          <div>
+            <div class="flex items-center justify-between">
+              <h4 class="font-bold text-white text-base">Developer Tier</h4>
+              {currentPlan === 'developer' && (
+                <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-indigo-500 text-white">Current Plan</span>
+              )}
+            </div>
+            <p class="text-xs text-slate-400 mt-1">Ideal for production apps with standard traffic</p>
+            <div class="mt-4 flex items-baseline gap-1">
+              <span class="text-3xl font-extrabold text-white">$29</span>
+              <span class="text-slate-400 text-xs">/month</span>
+            </div>
+            <ul class="mt-6 space-y-2.5 text-xs text-slate-300">
+              <li class="flex items-center gap-2">✓ 2,500 Credits Included / mo</li>
+              <li class="flex items-center gap-2">✓ 3 WhatsApp Worker Instances</li>
+              <li class="flex items-center gap-2 text-indigo-300 font-semibold">✓ 5 Custom Message Templates</li>
+              <li class="flex items-center gap-2">✓ 180 requests/min rate limit</li>
+            </ul>
+          </div>
+          {currentPlan !== 'developer' && (
+            <button onclick="upgradePlan('developer', 29)" class="mt-6 w-full py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors">
+              Switch to Developer
+            </button>
+          )}
+        </div>
+
+        <!-- Pro Tier -->
+        <div class={`p-6 rounded-2xl border flex flex-col justify-between ${
+          currentPlan === 'pro'
+            ? 'bg-indigo-950/20 border-indigo-500 shadow-xl shadow-indigo-500/10'
+            : 'bg-slate-900/40 border-slate-800'
+        }`}>
+          <div>
+            <div class="flex items-center justify-between">
+              <h4 class="font-bold text-white text-base">Pro Cluster</h4>
+              {currentPlan === 'pro' && (
+                <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-indigo-500 text-white">Current Plan</span>
+              )}
+            </div>
+            <p class="text-xs text-slate-400 mt-1">High-throughput routing and multi-account load balancer</p>
+            <div class="mt-4 flex items-baseline gap-1">
+              <span class="text-3xl font-extrabold text-white">$79</span>
+              <span class="text-slate-400 text-xs">/month</span>
+            </div>
+            <ul class="mt-6 space-y-2.5 text-xs text-slate-300">
+              <li class="flex items-center gap-2">✓ 10,000 Credits Included / mo</li>
+              <li class="flex items-center gap-2">✓ 10 WhatsApp Worker Instances</li>
+              <li class="flex items-center gap-2 text-indigo-300 font-semibold">✓ 25 Custom Message Templates</li>
+              <li class="flex items-center gap-2">✓ 600 requests/min rate limit</li>
+              <li class="flex items-center gap-2">✓ Custom Webhook Callbacks</li>
+            </ul>
+          </div>
+          {currentPlan !== 'pro' && (
+            <button onclick="upgradePlan('pro', 79)" class="mt-6 w-full py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors">
+              Upgrade to Pro
+            </button>
+          )}
+        </div>
+
+        <!-- Enterprise Tier -->
+        <div class={`p-6 rounded-2xl border flex flex-col justify-between ${
+          currentPlan === 'enterprise'
+            ? 'bg-indigo-950/20 border-indigo-500 shadow-xl shadow-indigo-500/10'
+            : 'bg-slate-900/40 border-slate-800'
+        }`}>
+          <div>
+            <div class="flex items-center justify-between">
+              <h4 class="font-bold text-white text-base">Enterprise</h4>
+              {currentPlan === 'enterprise' && (
+                <span class="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-indigo-500 text-white">Current Plan</span>
+              )}
+            </div>
+            <p class="text-xs text-slate-400 mt-1">Dedicated cluster pods with SLA guarantee</p>
+            <div class="mt-4 flex items-baseline gap-1">
+              <span class="text-3xl font-extrabold text-white">$199</span>
+              <span class="text-slate-400 text-xs">/month</span>
+            </div>
+            <ul class="mt-6 space-y-2.5 text-xs text-slate-300">
+              <li class="flex items-center gap-2">✓ 50,000 Credits Included / mo</li>
+              <li class="flex items-center gap-2">✓ Unlimited Worker Instances</li>
+              <li class="flex items-center gap-2 text-indigo-300 font-semibold">✓ Unlimited Message Templates</li>
+              <li class="flex items-center gap-2">✓ 3,000 requests/min rate limit</li>
+            </ul>
+          </div>
+          {currentPlan !== 'enterprise' && (
+            <button onclick="upgradePlan('enterprise', 199)" class="mt-6 w-full py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors">
+              Upgrade to Enterprise
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+
+    <!-- Transaction Invoices History -->
+    <div class="rounded-2xl bg-slate-900/60 border border-slate-800 overflow-hidden glass-panel">
+      <div class="p-6 border-b border-slate-800">
+        <h3 class="font-semibold text-white text-base">Payment & Credit Top-Up History</h3>
+        <p class="text-xs text-slate-400">Audit trail of credit refills and plan upgrades</p>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-xs">
+          <thead class="bg-slate-950/70 border-b border-slate-800 text-slate-400 uppercase font-mono text-[10px]">
+            <tr>
+              <th class="px-6 py-3.5">Invoice / Tx ID</th>
+              <th class="px-6 py-3.5">Description</th>
+              <th class="px-6 py-3.5">Credits Added</th>
+              <th class="px-6 py-3.5">Amount (USD)</th>
+              <th class="px-6 py-3.5">Date</th>
+              <th class="px-6 py-3.5 text-right">Receipt</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-800/60 text-slate-300">
+            {transactions.length === 0 ? (
+              <tr>
+                <td colspan="6" class="px-6 py-8 text-center text-slate-500">
+                  No previous transactions recorded.
+                </td>
+              </tr>
+            ) : (
+              transactions.map((tx) => (
+                <tr class="hover:bg-slate-800/30 transition-colors">
+                  <td class="px-6 py-4 font-mono text-indigo-300">#TX-{tx.id.toString().padStart(5, '0')}</td>
+                  <td class="px-6 py-4 font-medium text-white">{tx.description}</td>
+                  <td class="px-6 py-4 font-mono text-emerald-400">+{tx.credits_added.toLocaleString()}</td>
+                  <td class="px-6 py-4 font-mono font-semibold text-slate-200">${parseFloat(tx.amount_usd).toFixed(2)}</td>
+                  <td class="px-6 py-4 text-slate-400 text-[11px]">{new Date(tx.created_at).toLocaleDateString()}</td>
+                  <td class="px-6 py-4 text-right">
+                    <span class="text-xs text-emerald-400 font-semibold">Paid ✓</span>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script is:inline>
+    async function topupCredits(credits, amount) {
+      if (!confirm(`Add ${credits.toLocaleString()} credits to your MsgBridge account for $${amount}?`)) return;
+
+      try {
+        const res = await fetch('/api/v1/billing/topup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ credits, amount })
+        });
+        const data = await res.json();
+        if (data.success) {
+          window.showToast?.(`Added ${credits.toLocaleString()} credits!`, 'success');
+          setTimeout(() => window.location.reload(), 700);
+        } else {
+          window.showToast?.(data.error || 'Payment failed', 'error');
+        }
+      } catch (e) {
+        window.showToast?.(e.message, 'error');
+      }
+    }
+
+    async function upgradePlan(plan, amount) {
+      if (!confirm(`Switch your subscription to the ${plan.toUpperCase()} plan ($${amount}/mo)?`)) return;
+
+      try {
+        const res = await fetch('/api/v1/billing/topup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'upgrade_plan', plan, amount })
+        });
+        const data = await res.json();
+        if (data.success) {
+          window.showToast?.(data.message || 'Plan upgraded!', 'success');
+          setTimeout(() => window.location.reload(), 700);
+        } else {
+          window.showToast?.(data.error || 'Upgrade failed', 'error');
+        }
+      } catch (e) {
+        window.showToast?.(e.message, 'error');
+      }
+    }
+  </script>
+</DashboardLayout>

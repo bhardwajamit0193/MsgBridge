@@ -1,0 +1,751 @@
+---
+import DashboardLayout from '../../layouts/DashboardLayout.astro';
+import { getAuthenticatedUser } from '../../lib/auth.js';
+import { query } from '../../lib/db.js';
+
+const user = await getAuthenticatedUser(Astro.request);
+if (!user) {
+  return Astro.redirect('/login');
+}
+
+// Fetch all bots for this tenant
+const botsRes = await query(
+  `SELECT b.*,
+    (SELECT COUNT(*) FROM messages m WHERE m.bot_id = b.id) as message_count,
+    (SELECT COUNT(*) FROM bot_logs l WHERE l.bot_id = b.id) as log_count
+   FROM bots b
+   WHERE b.user_id = $1
+   ORDER BY b.created_at DESC`,
+  [user.id]
+);
+const bots = botsRes.rows;
+
+// Fetch recent bot logs across all bots
+const logsRes = await query(
+  `SELECT l.*, b.name as bot_name
+   FROM bot_logs l
+   JOIN bots b ON l.bot_id = b.id
+   WHERE b.user_id = $1
+   ORDER BY l.created_at DESC
+   LIMIT 20`,
+  [user.id]
+);
+const recentLogs = logsRes.rows;
+---
+
+<DashboardLayout title="Deploy New Messaging Worker" activeNav="bots">
+  <div class="space-y-8">
+    <!-- Top Bar with Deploy New Messaging Worker Button -->
+    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div>
+        <h2 class="text-xl font-bold text-white">Deploy New Messaging Worker</h2>
+        <p class="text-xs text-slate-400 mt-1">Manage underlying WhatsApp worker instances, scan live QR codes, and monitor connection health</p>
+      </div>
+
+      <button
+        type="button"
+        onclick="openCreateBotModal()"
+        class="px-4 py-2.5 rounded-xl font-semibold text-xs bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30 transition-all flex items-center gap-2"
+      >
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4" />
+        </svg>
+        <span>Deploy New Messaging Worker</span>
+      </button>
+    </div>
+
+    <!-- Bots Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {bots.length === 0 ? (
+        <div class="col-span-full p-12 text-center rounded-2xl bg-slate-900/40 border border-slate-800">
+          <div class="w-12 h-12 rounded-2xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center mx-auto mb-4">
+            <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+            </svg>
+          </div>
+          <h3 class="text-base font-semibold text-white">No Bot Workers Deployed</h3>
+          <p class="text-xs text-slate-400 max-w-sm mx-auto mt-1 mb-6">Deploy a WhatsApp worker instance to link your account and start dispatching OTPs.</p>
+          <button onclick="openCreateBotModal()" class="px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 text-white">Deploy Bot Instance</button>
+        </div>
+      ) : (
+        bots.map((bot) => {
+          const isOnline = bot.status === 'online';
+          const isScanning = bot.status === 'qr_ready' || bot.status === 'scanning';
+          const account = typeof bot.account_info === 'string' ? JSON.parse(bot.account_info || '{}') : (bot.account_info || {});
+
+          return (
+            <div class="rounded-2xl bg-slate-900/60 border border-slate-800 p-6 glass-panel flex flex-col justify-between hover:border-slate-700 transition-all">
+              <div>
+                <!-- Header -->
+                <div class="flex items-center justify-between pb-4 border-b border-slate-800/80">
+                  <div class="flex items-center gap-3">
+                    <div class={`w-3 h-3 rounded-full ${isOnline ? 'bg-emerald-400 glow-emerald' : isScanning ? 'bg-amber-400 glow-amber' : 'bg-slate-600'}`}></div>
+                    <div>
+                      <h4 class="text-sm font-semibold text-white truncate max-w-[150px]">{bot.name}</h4>
+                      <span class="text-[11px] font-mono text-slate-400">{bot.id}</span>
+                    </div>
+                  </div>
+
+                  <span class={`text-[10px] font-semibold uppercase px-2.5 py-0.5 rounded-full border ${
+                    isOnline ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30' :
+                    isScanning ? 'bg-amber-500/10 text-amber-300 border-amber-500/30' :
+                    'bg-slate-800 text-slate-400 border-slate-700'
+                  }`}>
+                    {bot.status}
+                  </span>
+                </div>
+
+                <!-- Account & Cluster Info -->
+                <div class="mt-4 space-y-2 text-xs">
+                  <div class="flex items-center justify-between text-slate-400">
+                    <span>Platform:</span>
+                    <span class="font-mono text-slate-200 capitalize font-semibold">{bot.platform}</span>
+                  </div>
+                  <div class="flex items-center justify-between text-slate-400">
+                    <span>Linked Account:</span>
+                    <span class="font-semibold text-indigo-300 truncate max-w-[160px]">
+                      {account.phone ? `+${account.phone}` : (account.nickname || (isOnline ? 'Connected' : 'Not Linked'))}
+                    </span>
+                  </div>
+                  <div class="flex items-center justify-between text-slate-400">
+                    <span>Messages Handled:</span>
+                    <span class="font-mono text-slate-200">{bot.message_count || 0}</span>
+                  </div>
+                  <div class="flex items-center justify-between text-slate-400">
+                    <span>Engine:</span>
+                    <span class="text-slate-300 font-mono text-[11px]">{account.puppet || 'multi-device-engine'}</span>
+                  </div>
+                  <div class="flex items-center justify-between text-slate-400">
+                    <span>Last Active:</span>
+                    <span class="text-slate-300 text-[11px]">{new Date(bot.last_active_at).toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Action Buttons -->
+              <div class="mt-6 pt-4 border-t border-slate-800/80 flex items-center gap-2">
+                <button
+                  type="button"
+                  onclick={`openQrModal('${bot.id}', '${bot.name}', '${bot.platform || 'whatsapp'}')`}
+                  class="flex-1 py-2 px-3 rounded-xl text-xs font-semibold bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 text-emerald-300 transition-colors flex items-center justify-center gap-1.5"
+                >
+                  <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                  </svg>
+                  <span>{isOnline ? 'Re-link QR' : 'Scan Live QR'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onclick={`triggerBotAction('${bot.id}', 'restart')`}
+                  title="Restart Bot Session"
+                  class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+                >
+                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                </button>
+
+                {isOnline && (
+                  <button
+                    type="button"
+                    onclick={`triggerBotAction('${bot.id}', 'disconnect')`}
+                    title="Disconnect Session"
+                    class="p-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 transition-colors"
+                  >
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                    </svg>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onclick={`deleteBot('${bot.id}', '${bot.name.replace(/'/g, "\\'")}')`}
+                  title="Delete Messaging Worker"
+                  class="p-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 border border-rose-500/30 transition-colors"
+                >
+                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          );
+        })
+      )}
+    </div>
+
+    <!-- Live Diagnostics & Bot Error Logs Stream -->
+    <div class="rounded-2xl bg-slate-900/60 border border-slate-800 p-6 glass-panel">
+      <div class="flex items-center justify-between pb-4 border-b border-slate-800">
+        <div>
+          <h3 class="font-semibold text-white text-base">Bot Health & Diagnostics Log Stream</h3>
+          <p class="text-xs text-slate-400">Live operational events, QR generation lifecycle, and worker container messages</p>
+        </div>
+        <button
+          onclick="window.location.reload()"
+          class="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors flex items-center gap-1.5"
+        >
+          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+          Refresh Logs
+        </button>
+      </div>
+
+      <div class="mt-4 space-y-2 max-h-72 overflow-y-auto font-mono text-xs pr-2">
+        {recentLogs.length === 0 ? (
+          <p class="text-slate-500 py-4 text-center">No bot logs recorded yet.</p>
+        ) : (
+          recentLogs.map((log) => {
+            const isError = log.level === 'error';
+            const isWarn = log.level === 'warn';
+            return (
+              <div class="p-2.5 rounded-xl bg-slate-950/80 border border-slate-800/80 flex items-start justify-between gap-4">
+                <div class="flex items-start gap-3">
+                  <span class={`px-1.5 py-0.5 rounded text-[10px] uppercase font-bold ${
+                    isError ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' :
+                    isWarn ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' :
+                    'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
+                  }`}>
+                    {log.level}
+                  </span>
+                  <div>
+                    <span class="text-slate-200">{log.message}</span>
+                    <span class="text-slate-400 text-[11px] block mt-0.5">Bot: {log.bot_name} ({log.bot_id})</span>
+                  </div>
+                </div>
+                <span class="text-slate-500 text-[10px] shrink-0">
+                  {new Date(log.created_at).toLocaleTimeString()}
+                </span>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  </div>
+
+  <!-- QR / Pairing Code Linking Modal -->
+  <div id="qr-modal" class="fixed inset-0 z-50 bg-black/85 backdrop-blur-md hidden items-center justify-center p-4">
+    <div class="w-full max-w-lg rounded-2xl bg-[#0e1320] border border-slate-800 p-6 shadow-2xl relative">
+      <button onclick="closeQrModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white">
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+
+      <div>
+        <!-- Mode Tabs: QR Scan (Default) vs Pairing Code -->
+        <div class="flex items-center justify-center gap-2 mb-5">
+          <button
+            type="button"
+            id="tab-mode-qr"
+            onclick="setModalTab('qr')"
+            class="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-emerald-600/30 text-emerald-300 border border-emerald-500/50 flex items-center gap-1.5"
+          >
+            <span>📷 Scan QR Code</span>
+          </button>
+          <button
+            type="button"
+            id="tab-mode-pairing"
+            onclick="setModalTab('pairing')"
+            class="px-3.5 py-1.5 rounded-xl text-xs font-semibold text-slate-400 hover:text-white border border-transparent flex items-center gap-1.5"
+          >
+            <span>🔢 Link with Phone Number</span>
+          </button>
+        </div>
+
+        <h3 class="text-lg font-bold text-white text-center" id="qr-modal-title">Link WhatsApp Worker</h3>
+        <p class="text-xs text-slate-400 text-center mt-1" id="qr-modal-desc">
+          Scan the live WhatsApp QR code with your phone to activate the messaging session
+        </p>
+
+        <!-- VIEW 1: QR Code Scan (Primary) -->
+        <div id="view-qr-scan" class="mt-4 text-center">
+          <div class="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 text-left text-xs text-slate-300 space-y-1.5 mb-4">
+            <div class="font-semibold text-white flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+              <span>How to scan with your phone:</span>
+            </div>
+            <p>1. Open <strong class="text-emerald-300 font-semibold">WhatsApp</strong> on your phone</p>
+            <p>2. Tap <strong class="text-white">Settings</strong> (iOS) or <strong class="text-white">⋮ Menu</strong> (Android) → <strong class="text-white">Linked Devices</strong></p>
+            <p>3. Tap <strong class="text-white">Link a Device</strong> and point your camera at the QR code below</p>
+          </div>
+
+          <div class="flex flex-col items-center justify-center">
+            <div class="p-4 rounded-2xl bg-white shadow-2xl border-4 border-emerald-500/40 relative group">
+              <img id="qr-code-img" src="" alt="WhatsApp Pairing QR Code" class="w-64 h-64 object-contain mx-auto" />
+              <div id="qr-loading-overlay" class="absolute inset-0 bg-slate-950/90 rounded-xl flex flex-col items-center justify-center text-xs text-emerald-300 gap-3">
+                <span class="animate-spin text-3xl">⚙️</span>
+                <span class="font-mono">Connecting to WhatsApp Web & Generating QR...</span>
+              </div>
+            </div>
+
+            <div id="qr-status-indicator" class="mt-3 flex items-center gap-2 text-xs text-emerald-400 font-mono">
+              <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span id="qr-status-text">Point camera at QR code to link...</span>
+            </div>
+          </div>
+
+          <div class="mt-5 flex items-center gap-3">
+            <button
+              type="button"
+              onclick="checkScanStatus()"
+              id="check-scan-btn"
+              class="flex-1 py-2.5 rounded-xl font-semibold text-xs bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/30 transition-all flex items-center justify-center gap-1.5"
+            >
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span>Check Scan Status</span>
+            </button>
+
+            <button
+              type="button"
+              onclick="refreshQrCode()"
+              class="px-4 py-2.5 rounded-xl font-semibold text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors flex items-center gap-1.5"
+            >
+              <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              <span>Refresh QR</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- VIEW 2: Phone Number Pairing Code (Alternative) -->
+        <div id="view-pairing-code" class="hidden mt-5 space-y-4">
+          <div class="p-3.5 rounded-xl bg-emerald-950/30 border border-emerald-500/30 text-xs text-emerald-300">
+            <strong class="font-semibold block text-emerald-200 mb-1">⭐ Link with 8-digit code:</strong>
+            Enter your mobile number to get an 8-character pairing code directly from WhatsApp if your camera cannot scan.
+          </div>
+
+          <form id="pairing-code-form" onsubmit="handleRequestPairingCode(event)" class="space-y-3">
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 mb-1">Your WhatsApp Phone Number</label>
+              <input
+                type="text"
+                id="pairing-phone-input"
+                required
+                placeholder="+1 650 555 0192 or +91 98765 43210"
+                class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 focus:border-emerald-500 focus:outline-none text-sm text-slate-100 font-mono"
+              />
+              <span class="text-[11px] text-slate-500 mt-1 block">Include your country code (e.g. +1, +44, +91, +86)</span>
+            </div>
+
+            <button
+              type="submit"
+              id="pairing-submit-btn"
+              class="w-full py-2.5 rounded-xl font-semibold text-xs bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/30 transition-all flex items-center justify-center gap-2"
+            >
+              <span>Get 8-Character Pairing Code</span>
+            </button>
+          </form>
+
+          <!-- Pairing Code Display Box -->
+          <div id="pairing-code-result" class="hidden p-5 rounded-2xl bg-slate-950 border-2 border-emerald-500/50 text-center space-y-3">
+            <span class="text-xs text-slate-400 uppercase tracking-wider font-semibold block">Your WhatsApp Pairing Code</span>
+            <div class="flex items-center justify-center gap-3">
+              <span id="pairing-code-digits" class="text-3xl font-extrabold font-mono tracking-widest text-emerald-400 bg-emerald-950/40 px-5 py-2 rounded-xl border border-emerald-500/40"></span>
+              <button
+                type="button"
+                onclick="copyPairingCode()"
+                id="copy-code-btn"
+                class="px-3 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors"
+              >
+                Copy
+              </button>
+            </div>
+
+            <!-- Instructions -->
+            <div class="p-3 rounded-xl bg-slate-900 border border-slate-800 text-left text-xs text-slate-300 space-y-1.5">
+              <div class="font-semibold text-white">How to enter on your phone:</div>
+              <p>1. Open <strong class="text-emerald-300">WhatsApp</strong> on your mobile phone</p>
+              <p>2. Tap <strong class="text-white">Settings</strong> (iOS) or <strong class="text-white">⋮ Menu</strong> (Android) → <strong class="text-white">Linked Devices</strong></p>
+              <p>3. Tap <strong class="text-white">Link a Device</strong></p>
+              <p>4. Tap <strong class="text-emerald-400 underline">"Link with phone number instead"</strong> at the bottom</p>
+              <p>5. Enter the 8-character code shown above!</p>
+            </div>
+
+            <div class="flex items-center justify-center gap-2 text-xs text-emerald-400 font-mono pt-1">
+              <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span>Waiting for code entry on your phone...</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bottom Sandbox Fallback -->
+        <div class="mt-6 pt-4 border-t border-slate-800 flex items-center justify-between text-xs">
+          <span class="text-slate-500">Need instant testing without a phone?</span>
+          <button
+            type="button"
+            onclick="simulatePhoneScan()"
+            id="simulate-scan-btn"
+            class="text-indigo-400 hover:text-indigo-300 hover:underline font-semibold"
+          >
+            ⚡ Auto-Authorize Sandbox Bot
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Deploy New Bot Modal -->
+  <div id="create-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden items-center justify-center p-4">
+    <div class="w-full max-w-md rounded-2xl bg-[#0e1320] border border-slate-800 p-6 shadow-2xl relative">
+      <button onclick="closeCreateBotModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white">
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+
+      <h3 class="text-lg font-bold text-white">Deploy New Messaging Worker</h3>
+      <p class="text-xs text-slate-400 mt-1">Spin up an isolated Baileys WhatsApp worker with database-persisted session</p>
+
+      <form id="create-bot-form" class="mt-6 space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1.5">Worker Instance Label</label>
+          <input
+            type="text"
+            id="new-bot-name"
+            required
+            placeholder="e.g. WhatsApp Gateway #1"
+            value="WhatsApp Worker #1"
+            class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 focus:border-indigo-500 focus:outline-none text-xs text-slate-100"
+          />
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1.5">Messaging Platform</label>
+          <select id="new-bot-platform" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 focus:border-indigo-500 focus:outline-none text-xs text-slate-200">
+            <option value="whatsapp" selected>WhatsApp Web (Multi-Device - Database Session)</option>
+          </select>
+        </div>
+
+        <div class="pt-2">
+          <button
+            type="submit"
+            id="deploy-btn"
+            class="w-full py-2.5 rounded-xl font-semibold text-xs bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center gap-2"
+          >
+            <span>Deploy Messaging Worker</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script is:inline>
+    let activeBotId = null;
+    let currentPlatform = 'whatsapp';
+    let pollInterval = null;
+    let activePairingCode = '';
+
+    function openCreateBotModal() {
+      document.getElementById('create-modal').classList.remove('hidden');
+      document.getElementById('create-modal').classList.add('flex');
+    }
+
+    function closeCreateBotModal() {
+      document.getElementById('create-modal').classList.add('hidden');
+      document.getElementById('create-modal').classList.remove('flex');
+    }
+
+    function setModalTab(tab) {
+      const tabPairing = document.getElementById('tab-mode-pairing');
+      const tabQr = document.getElementById('tab-mode-qr');
+      const viewPairing = document.getElementById('view-pairing-code');
+      const viewQr = document.getElementById('view-qr-scan');
+
+      if (tab === 'pairing') {
+        tabPairing.className = 'px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-emerald-600/30 text-emerald-300 border border-emerald-500/50 flex items-center gap-1.5';
+        tabQr.className = 'px-3.5 py-1.5 rounded-xl text-xs font-semibold text-slate-400 hover:text-white border border-transparent flex items-center gap-1.5';
+        viewPairing.classList.remove('hidden');
+        viewQr.classList.add('hidden');
+      } else {
+        tabQr.className = 'px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-emerald-600/30 text-emerald-300 border border-emerald-500/50 flex items-center gap-1.5';
+        tabPairing.className = 'px-3.5 py-1.5 rounded-xl text-xs font-semibold text-slate-400 hover:text-white border border-transparent flex items-center gap-1.5';
+        viewQr.classList.remove('hidden');
+        viewPairing.classList.add('hidden');
+
+        const qrImg = document.getElementById('qr-code-img');
+        if (!qrImg.src || qrImg.src === window.location.href) {
+          fetchQr(false);
+        }
+      }
+    }
+
+    async function openQrModal(botId, botName, platform = 'whatsapp') {
+      activeBotId = botId;
+      currentPlatform = platform || 'whatsapp';
+      document.getElementById('qr-modal-title').textContent = `Link ${botName}`;
+      document.getElementById('qr-modal').classList.remove('hidden');
+      document.getElementById('qr-modal').classList.add('flex');
+
+      // Reset state
+      activePairingCode = '';
+      document.getElementById('pairing-code-result').classList.add('hidden');
+      document.getElementById('pairing-submit-btn').disabled = false;
+      document.getElementById('pairing-submit-btn').innerHTML = `<span>Get 8-Character Pairing Code</span>`;
+      
+      // Default to live QR code scan tab
+      setModalTab('qr');
+      fetchQr(false);
+      startStatusPolling(botId);
+    }
+
+    async function handleRequestPairingCode(e) {
+      e.preventDefault();
+      if (!activeBotId) return;
+
+      const phoneInput = document.getElementById('pairing-phone-input');
+      const submitBtn = document.getElementById('pairing-submit-btn');
+      const phoneNumber = phoneInput.value.trim();
+
+      if (!phoneNumber) {
+        window.showToast?.('Please enter your phone number with country code', 'error');
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = `
+        <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white inline" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        <span>Requesting Official Code from WhatsApp...</span>
+      `;
+
+      try {
+        const res = await fetch(`/api/v1/bots/${activeBotId}/pairing-code`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phoneNumber })
+        });
+        const data = await res.json();
+
+        if (data.success && data.pairingCode) {
+          activePairingCode = data.pairingCode;
+          // Format 8 digits with hyphen: e.g. "ABCD - EFGH"
+          const formatted = data.pairingCode.length === 8 
+            ? `${data.pairingCode.slice(0, 4)} - ${data.pairingCode.slice(4)}`
+            : data.pairingCode;
+
+          document.getElementById('pairing-code-digits').textContent = formatted;
+          document.getElementById('pairing-code-result').classList.remove('hidden');
+          window.showToast?.('Pairing code generated! Enter it in your WhatsApp mobile app.', 'success');
+        } else {
+          window.showToast?.(data.error || 'Failed to request pairing code', 'error');
+        }
+      } catch (err) {
+        window.showToast?.(err.message || 'Error connecting to server', 'error');
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = `<span>Regenerate Pairing Code</span>`;
+      }
+    }
+
+    function copyPairingCode() {
+      if (!activePairingCode) return;
+      navigator.clipboard.writeText(activePairingCode).then(() => {
+        const copyBtn = document.getElementById('copy-code-btn');
+        const orig = copyBtn.textContent;
+        copyBtn.textContent = 'Copied!';
+        copyBtn.classList.add('bg-emerald-600', 'text-white');
+        setTimeout(() => {
+          copyBtn.textContent = orig;
+          copyBtn.classList.remove('bg-emerald-600', 'text-white');
+        }, 2000);
+        window.showToast?.('Code copied to clipboard!', 'success');
+      }).catch(() => {
+        window.showToast?.('Could not copy code', 'error');
+      });
+    }
+
+    async function fetchQr(force = false) {
+      if (!activeBotId) return;
+      document.getElementById('qr-loading-overlay').classList.remove('hidden');
+      document.getElementById('qr-status-text').textContent = 'Connecting to WhatsApp Web...';
+
+      try {
+        const res = await fetch(`/api/v1/bots/${activeBotId}/qr`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ platform: currentPlatform, force })
+        });
+        const data = await res.json();
+        if (data.qrDataUrl) {
+          document.getElementById('qr-code-img').src = data.qrDataUrl;
+          document.getElementById('qr-loading-overlay').classList.add('hidden');
+          document.getElementById('qr-status-text').textContent = 'Point your WhatsApp camera at this code';
+        } else {
+          document.getElementById('qr-status-text').textContent = data.error || 'Failed to fetch QR';
+        }
+      } catch (e) {
+        window.showToast?.('Error loading QR code', 'error');
+        document.getElementById('qr-status-text').textContent = 'Failed to load QR code. Click Refresh.';
+      }
+    }
+
+    async function checkScanStatus() {
+      if (!activeBotId) return;
+      const btn = document.getElementById('check-scan-btn');
+      const origHtml = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = `<span>Checking status...</span>`;
+
+      try {
+        const res = await fetch(`/api/v1/bots/${activeBotId}`);
+        const data = await res.json();
+        if (data.bot && data.bot.status === 'online') {
+          const statusEl = document.getElementById('qr-status-text');
+          if (statusEl) statusEl.textContent = '✓ Device Paired Successfully! Reloading...';
+          window.showToast?.('WhatsApp account linked successfully!', 'success');
+          setTimeout(() => window.location.reload(), 800);
+        } else {
+          window.showToast?.('QR code waiting for scan. Point your WhatsApp camera at the code.', 'info');
+          const statusEl = document.getElementById('qr-status-text');
+          if (statusEl) statusEl.textContent = 'Waiting for WhatsApp camera scan...';
+        }
+      } catch (e) {
+        window.showToast?.('Error checking scan status', 'error');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = origHtml;
+      }
+    }
+
+    function refreshQrCode() {
+      fetchQr(true);
+    }
+
+    function startStatusPolling(botId) {
+      if (pollInterval) clearInterval(pollInterval);
+      pollInterval = setInterval(async () => {
+        try {
+          const res = await fetch(`/api/v1/bots/${botId}`);
+          const data = await res.json();
+          if (data.bot && data.bot.status === 'online') {
+            clearInterval(pollInterval);
+            pollInterval = null;
+            const statusEl = document.getElementById('qr-status-text');
+            if (statusEl) statusEl.textContent = '✓ Device Paired Successfully! Reloading...';
+            window.showToast?.('WhatsApp account linked successfully!', 'success');
+            setTimeout(() => window.location.reload(), 1000);
+          }
+        } catch (e) {}
+      }, 2000);
+    }
+
+    function closeQrModal() {
+      if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+      }
+      document.getElementById('qr-modal').classList.add('hidden');
+      document.getElementById('qr-modal').classList.remove('flex');
+    }
+
+    async function simulatePhoneScan() {
+      if (!activeBotId) return;
+      const btn = document.getElementById('simulate-scan-btn');
+      btn.disabled = true;
+      btn.textContent = 'Authorizing...';
+
+      try {
+        const res = await fetch(`/api/v1/bots/${activeBotId}/simulate-scan`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nickname: 'WhatsApp Linked Mobile', phone: '16505550192' })
+        });
+        const data = await res.json();
+        if (data.success) {
+          window.showToast?.('Bot authenticated and online!', 'success');
+          closeQrModal();
+          setTimeout(() => window.location.reload(), 800);
+        }
+      } catch (err) {
+        window.showToast?.(err.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '⚡ Auto-Authorize Sandbox Bot';
+      }
+    }
+
+    async function triggerBotAction(botId, action) {
+      if (!confirm(`Are you sure you want to ${action} this bot container?`)) return;
+
+      try {
+        const res = await fetch(`/api/v1/bots/${botId}/action`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action })
+        });
+        const data = await res.json();
+        if (data.success) {
+          window.showToast?.(`Bot action "${action}" completed`, 'success');
+          setTimeout(() => window.location.reload(), 800);
+        } else {
+          window.showToast?.(data.error || 'Action failed', 'error');
+        }
+      } catch (err) {
+        window.showToast?.(err.message, 'error');
+      }
+    }
+
+    async function deleteBot(botId, botName) {
+      if (!confirm(`Are you sure you want to delete worker "${botName || botId}"?\nThis will disconnect its session and permanently remove it.`)) {
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/v1/bots/${botId}`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          window.showToast?.(`Worker "${botName || botId}" deleted successfully`, 'success');
+          setTimeout(() => window.location.reload(), 600);
+        } else {
+          window.showToast?.(data.error || 'Failed to delete worker', 'error');
+        }
+      } catch (err) {
+        window.showToast?.(err.message || 'Error connecting to server', 'error');
+      }
+    }
+
+    document.getElementById('create-bot-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = document.getElementById('new-bot-name').value;
+      const platform = document.getElementById('new-bot-platform').value;
+      const deployBtn = document.getElementById('deploy-btn');
+
+      deployBtn.disabled = true;
+      deployBtn.innerHTML = `<span>Deploying Pod...</span>`;
+
+      try {
+        const res = await fetch('/api/v1/bots', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, platform })
+        });
+        const data = await res.json();
+        if (data.success) {
+          window.showToast?.(`Deployed bot instance "${name}"!`, 'success');
+          closeCreateBotModal();
+          setTimeout(() => window.location.reload(), 600);
+        } else {
+          window.showToast?.(data.error || 'Deploy failed', 'error');
+        }
+      } catch (err) {
+        window.showToast?.(err.message, 'error');
+      } finally {
+        deployBtn.disabled = false;
+        deployBtn.innerHTML = `<span>Deploy Bot Worker</span>`;
+      }
+    });
+  </script>
+</DashboardLayout>

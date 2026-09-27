@@ -1,0 +1,130 @@
+---
+import MainLayout from './MainLayout.astro';
+import { getAuthenticatedUser } from '../lib/auth.js';
+import { botClusterManager } from '../lib/bot-engine.js';
+
+interface Props {
+  title?: string;
+  activeNav?: string;
+}
+
+const { title = 'MsgBridge Cluster Admin', activeNav = 'overview' } = Astro.props;
+
+const user = await getAuthenticatedUser(Astro.request);
+if (!user) {
+  return Astro.redirect('/login');
+}
+if (user.role !== 'admin') {
+  return Astro.redirect('/dashboard');
+}
+
+const metrics = await botClusterManager.getClusterMetrics();
+
+const navItems = [
+  { id: 'overview', label: 'Cluster Metrics', href: '/admin', icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
+  { id: 'users', label: 'User & Tenant Management', href: '/admin/users', icon: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z' },
+  { id: 'bots', label: 'Bot Fleet & Error Logs', href: '/admin/bots', icon: 'M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10' },
+];
+---
+
+<MainLayout title={title}>
+  <div class="flex h-screen overflow-hidden bg-[#06080d]">
+    <!-- Admin Sidebar -->
+    <aside class="w-72 border-r border-slate-800/80 bg-[#090c14] flex flex-col justify-between shrink-0">
+      <div>
+        <!-- Brand Header -->
+        <div class="p-6 border-b border-slate-800/60 flex items-center justify-between">
+          <div class="flex items-center gap-2.5">
+            <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-amber-500 to-rose-500 flex items-center justify-center shadow-lg shadow-amber-500/20">
+              <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+              </svg>
+            </div>
+            <div>
+              <span class="font-bold text-lg tracking-tight text-white">Admin Hub</span>
+              <span class="block text-[10px] uppercase font-bold text-amber-400 tracking-wider">Cluster Supervisor</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Navigation Links -->
+        <nav class="p-4 space-y-1.5">
+          <div class="px-3 py-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Platform Administration</div>
+          {navItems.map((item) => {
+            const isActive = activeNav === item.id;
+            return (
+              <a
+                href={item.href}
+                class={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
+                  isActive
+                    ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30 shadow-sm shadow-amber-950'
+                    : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/50'
+                }`}
+              >
+                <svg class={`w-4 h-4 ${isActive ? 'text-amber-400' : 'text-slate-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d={item.icon} />
+                </svg>
+                <span>{item.label}</span>
+              </a>
+            );
+          })}
+
+          <div class="pt-6 mt-4 border-t border-slate-800/60">
+            <a
+              href="/dashboard"
+              class="flex items-center gap-2.5 px-3.5 py-2 rounded-xl text-xs font-medium text-slate-400 hover:text-indigo-300 hover:bg-indigo-950/30 border border-transparent hover:border-indigo-500/20 transition-colors"
+            >
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+              <span>Back to Tenant Dashboard</span>
+            </a>
+          </div>
+        </nav>
+      </div>
+
+      <!-- Admin Status Footer -->
+      <div class="p-4 border-t border-slate-800/80 bg-[#07090f]">
+        <div class="rounded-xl p-3 bg-slate-900/60 border border-slate-800 space-y-2">
+          <div class="flex items-center justify-between text-xs">
+            <span class="text-slate-400">Node Heap:</span>
+            <span class="font-mono text-emerald-400 font-semibold">{metrics.system.memoryUsedMB}MB / {metrics.system.memoryTotalMB}MB</span>
+          </div>
+          <div class="flex items-center justify-between text-xs">
+            <span class="text-slate-400">Uptime:</span>
+            <span class="font-mono text-slate-300">{Math.floor(metrics.system.uptimeSeconds / 60)}m</span>
+          </div>
+          <div class="flex items-center justify-between text-xs">
+            <span class="text-slate-400">Supervisor:</span>
+            <span class="text-[11px] font-mono text-amber-300">SuperAdmin</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <div class="flex-1 flex flex-col h-full overflow-hidden">
+      <!-- Top Bar -->
+      <header class="h-16 border-b border-slate-800/80 bg-[#090c14]/80 backdrop-blur px-8 flex items-center justify-between shrink-0">
+        <div class="flex items-center gap-4">
+          <h1 class="text-lg font-semibold text-slate-100">{title}</h1>
+          <span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-500/15 text-amber-300 border border-amber-500/30">
+            SuperAdmin Zone
+          </span>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <div class="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span class="text-slate-400">Wechaty Daemon: <strong class="text-emerald-300 font-semibold">Active</strong></span>
+          </div>
+        </div>
+      </header>
+
+      <!-- Scrollable Main View -->
+      <main class="flex-1 overflow-y-auto p-8 bg-[#06080d]">
+        <slot />
+      </main>
+    </div>
+  </div>
+</MainLayout>
